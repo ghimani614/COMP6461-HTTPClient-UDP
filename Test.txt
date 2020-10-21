@@ -1,0 +1,14 @@
+{
+  "args": {
+    "assignment": "1", 
+    "course": "networking"
+  }, 
+  "headers": {
+    "Accept": "text/html, image/gif, image/jpeg, *; q=.2, */*; q=.2", 
+    "Host": "httpbin.org", 
+    "User-Agent": "Java/1.8.0_191", 
+    "X-Amzn-Trace-Id": "Root=1-5f739ff4-66fb4022158bb80e1956d718"
+  }, 
+  "origin": "66.158.155.97", 
+  "url": "http://httpbin.org/get?course=networking&assignment=1"
+}
