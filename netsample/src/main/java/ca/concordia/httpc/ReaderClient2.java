@@ -3,7 +3,6 @@ package ca.concordia.httpc;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 
-import java.io.EOFException;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
@@ -11,11 +10,10 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.util.Scanner;
 
 import static java.util.Arrays.asList;
 
-public class httpc {
+public class ReaderClient2 {
 
     // readFully reads until the request is fulfilled or the socket is closed
     private static void readFully(SocketChannel socket, ByteBuffer buf, int size) throws IOException {
@@ -24,9 +22,11 @@ public class httpc {
 
     private static void readEchoAndRepeat(SocketChannel socket) throws IOException {
         Charset utf8 = StandardCharsets.UTF_8;
-        Scanner scanner = new Scanner(System.in);
-        while (scanner.hasNextLine()) {
-            String line = scanner.nextLine();
+
+        int times = 0;
+
+        while (times < 10000) {
+            String line = "???";
             ByteBuffer buf = ByteBuffer.allocate(2048);
 
             int n = socket.write(ByteBuffer.wrap(line.getBytes(StandardCharsets.UTF_8)));
@@ -66,4 +66,3 @@ public class httpc {
         runClient(endpoint);
     }
 }
-

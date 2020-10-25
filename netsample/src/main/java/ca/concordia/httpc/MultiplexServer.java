@@ -1,28 +1,35 @@
 package ca.concordia.httpc;
 
+
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
-import java.net.*;
+import java.net.HttpURLConnection;
+import java.net.InetSocketAddress;
+import java.net.URL;
+import java.net.URLConnection;
 import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.ForkJoinPool;
-
-import static java.util.Arrays.asList;
-
 import java.util.HashMap;
+
+import static java.nio.channels.SelectionKey.OP_ACCEPT;
+import static java.nio.channels.SelectionKey.OP_READ;
+import static java.util.Arrays.asList;
 
 import org.json.simple.*;
 import org.json.simple.parser.*;
 
-public class httpcServer {
-
-    private static final Logger logger = LoggerFactory.getLogger(ca.concordia.echo.BlockingEchoServer.class);
+public class MultiplexServer {
+    private static final Logger logger = LoggerFactory.getLogger(ca.concordia.echo.MultiplexEchoServer.class);
 
     private String currentURL = "";
     private String redirectedURL = "", redirectionResultString = "";
@@ -31,41 +38,42 @@ public class httpcServer {
 
     private HashMap<String, String> headerKeyValuePairHashMap;
 
-    private void readEchoAndRepeat(SocketChannel socket) {
-        try (SocketChannel client = socket) {
-            ByteBuffer buf = ByteBuffer.allocate(2048);
-            for (; ; ) {
-                int nr = client.read(buf);
+    // Uses a single buffer to demonstrate that all clients are running in a single thread
+    private final ByteBuffer buffer = ByteBuffer.allocate(2048);
 
-                // Convert byte array to string
-                String requestString = new String(buf.array(), StandardCharsets.UTF_8);
+    private void readAndEcho(SelectionKey s) {
+        SocketChannel client = (SocketChannel) s.channel();
+        try {
+            for (; ; ) {
+                int n = client.read(buffer);
+                // If the number of bytes read is -1, the peer is closed
+                if (n == -1) {
+                    unregisterClient(s);
+                    return;
+                }
+                if (n == 0) {
+                    return;
+                }
+
+                String requestString = new String(buffer.array(), StandardCharsets.UTF_8);
                 System.out.println("Client request: " + requestString);
 
-                buf.clear();
+                // Reset and empty the buffer
+                buffer.clear();
 
-                for (int i = 0; i < buf.array().length; i++)
-                    buf.put((byte) 0);
+                for (int i = 0; i < buffer.array().length; i++)
+                    buffer.put((byte) 0);
 
                 String responseString = parseCommandLine(requestString);
 
-                if (nr == -1)
-                    break;
-
-                if (nr > 0) {
-
-                    buf.clear();
-                    buf.position(0);
-
-                    // ByteBuffer is tricky, you have to flip when switch from read to write, or
-                    // vice-versa
-                    buf.flip();
-
-                    client.write(ByteBuffer.wrap(responseString.getBytes(StandardCharsets.UTF_8)));
-                    buf.clear();
-                }
+                // ByteBuffer is tricky, you have to flip when switch from read to write, or vice-versa
+                buffer.flip();
+                client.write(ByteBuffer.wrap(responseString.getBytes(StandardCharsets.UTF_8)));
+                buffer.clear();
             }
         } catch (IOException e) {
-            logger.error("Echo error {}", e);
+            unregisterClient(s);
+            logger.error("Failed to receive/send data", e);
         }
     }
 
@@ -802,18 +810,42 @@ public class httpcServer {
         return true;
     }
 
-    private void listenAndServe(int port) throws IOException {
-        try (ServerSocketChannel server = ServerSocketChannel.open()) {
-            server.bind(new InetSocketAddress(port));
-            logger.info("EchoServer is listening at {}", server.getLocalAddress());
-            for (; ; ) {
-                SocketChannel client = server.accept();
-                logger.info("New client from {}", client.getRemoteAddress());
-                // We may use a custom Executor instead of ForkJoinPool in a real-world
-                // application
-                ForkJoinPool.commonPool().submit(() -> readEchoAndRepeat(client));
+    private void newClient(ServerSocketChannel server, Selector selector) {
+        try {
+            SocketChannel client = server.accept();
+            client.configureBlocking(false);
+            logger.info("New client from {}", client.getRemoteAddress());
+            client.register(selector, OP_READ, client);
+        } catch (IOException e) {
+            logger.error("Failed to accept client", e);
+        }
+    }
+
+    private void unregisterClient(SelectionKey s) {
+        try {
+            s.cancel();
+            s.channel().close();
+        } catch (IOException e) {
+            logger.error("Failed to clean up", e);
+        }
+    }
+
+    private void runLoop(ServerSocketChannel server, Selector selector) throws IOException {
+        // Check if there is any event (eg. new client or new data) happened
+        selector.select();
+
+        for (SelectionKey s : selector.selectedKeys()) {
+            // Acceptable means there is a new incoming
+            if (s.isAcceptable()) {
+                newClient(server, selector);
+
+                // Readable means this client has sent data or closed
+            } else if (s.isReadable()) {
+                readAndEcho(s);
             }
         }
+        // We must clear this set, otherwise the select will return the same value again
+        selector.selectedKeys().clear();
     }
 
     private String postHttpResponse(String urlString, HashMap<String, String> headerKeyValuePairHashMap, String jsonData) {
@@ -827,8 +859,9 @@ public class httpcServer {
             connection.setRequestMethod("POST");
 
             // Set all the header parameters
-            for (String keyString : headerKeyValuePairHashMap.keySet())
-                connection.setRequestProperty(keyString, headerKeyValuePairHashMap.get(keyString));
+            if (headerKeyValuePairHashMap != null)
+                for (String keyString : headerKeyValuePairHashMap.keySet())
+                    connection.setRequestProperty(keyString, headerKeyValuePairHashMap.get(keyString));
 
             // The Content-Type is fixed
             connection.setRequestProperty("Content-Type", "application/json");
@@ -857,13 +890,28 @@ public class httpcServer {
         return stringBuilder.toString();
     }
 
+    private void listenAndServe(int port) throws IOException {
+        try (ServerSocketChannel server = ServerSocketChannel.open()) {
+            server.bind(new InetSocketAddress(port));
+            server.configureBlocking(false);
+            Selector selector = Selector.open();
+
+            // Register the server socket to be notified when there is a new incoming client
+            server.register(selector, OP_ACCEPT, null);
+            for (; ; ) {
+                runLoop(server, selector);
+            }
+        }
+    }
+
     public static void main(String[] args) throws IOException {
         OptionParser parser = new OptionParser();
-        parser.acceptsAll(asList("port", "p"), "Listening port").withOptionalArg().defaultsTo("8010");
+        parser.acceptsAll(asList("port", "p"), "Listening port")
+                .withOptionalArg()
+                .defaultsTo("8010");
 
         OptionSet opts = parser.parse(args);
         int port = Integer.parseInt((String) opts.valueOf("port"));
-        httpcServer server = new httpcServer();
-        server.listenAndServe(port);
+        new MultiplexServer().listenAndServe(port);
     }
 }
