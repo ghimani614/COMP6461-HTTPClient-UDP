@@ -1,6 +1,6 @@
 # Lab Assignment 2
 
-This Java project implemented all the functionalities of COMP 6461 Lab Assignment 2, including all the optional tasks(bonus marks). It was developed based on the blocking echo server template.
+This Java project implemented all the functionalities of COMP 6461 Lab Assignment 2, including all the optional tasks(bonus marks). It was developed based on the multiplex echo server template.
 
 ## Requirement
 1. [Oracle JDK 11](https://www.oracle.com/java/technologies/javase-jdk11-downloads.html)
