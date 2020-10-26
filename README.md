@@ -1,6 +1,6 @@
 # Lab Assignment 2
 
-This Java project implemented all the functionalities of COMP 6461 Lab Assignment 2, including all the optional tasks(bonus marks). It was developed based on the blocking echo server template.
+This Java project implemented all the functionalities of COMP 6461 Lab Assignment 2, including all the optional tasks(bonus marks). It was developed based on the multiplex echo server template.
 
 ## Requirement
 1. [Oracle JDK 11](https://www.oracle.com/java/technologies/javase-jdk11-downloads.html)
@@ -92,3 +92,5 @@ httpc post -v -h key1:value1 key2:value2 -f Data.json 'http://httpbin.org/post'
 2. https://www.tutorialspoint.com/json_simple/json_simple_quick_guide.htm
 3. https://stackoverflow.com/questions/20806617/retrieve-the-final-location-of-a-given-url-in-java
 4. https://www.codota.com/code/java/methods/java.net.URLConnection/getHeaderField
+5. https://medium.com/@liakh.aliaksandr/java-sockets-i-o-blocking-non-blocking-and-asynchronous-fb7f066e4ede
+6. https://wiki.eecs.yorku.ca/course_archive/2007-08/F/6490A/readers-writers
