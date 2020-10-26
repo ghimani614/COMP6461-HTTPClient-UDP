@@ -23,10 +23,8 @@ public class ReaderClient1 {
     private static void readEchoAndRepeat(SocketChannel socket) throws IOException {
         Charset utf8 = StandardCharsets.UTF_8;
 
-        int times = 0;
-
-        while (times < 10000) {
-            String line = "???";
+        while (true) {
+            String line = "R1";
             ByteBuffer buf = ByteBuffer.allocate(2048);
 
             int n = socket.write(ByteBuffer.wrap(line.getBytes(StandardCharsets.UTF_8)));

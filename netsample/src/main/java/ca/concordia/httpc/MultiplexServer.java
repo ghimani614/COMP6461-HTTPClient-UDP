@@ -25,8 +25,6 @@ import static java.nio.channels.SelectionKey.OP_ACCEPT;
 import static java.nio.channels.SelectionKey.OP_READ;
 import static java.util.Arrays.asList;
 
-import org.json.simple.*;
-import org.json.simple.parser.*;
 
 public class MultiplexServer {
     private static final Logger logger = LoggerFactory.getLogger(ca.concordia.echo.MultiplexEchoServer.class);
@@ -40,6 +38,8 @@ public class MultiplexServer {
 
     // Uses a single buffer to demonstrate that all clients are running in a single thread
     private final ByteBuffer buffer = ByteBuffer.allocate(2048);
+
+    private int numberOfReaders = 0, numberOfWriters = 0;
 
     private void readAndEcho(SelectionKey s) {
         SocketChannel client = (SocketChannel) s.channel();
@@ -64,7 +64,25 @@ public class MultiplexServer {
                 for (int i = 0; i < buffer.array().length; i++)
                     buffer.put((byte) 0);
 
-                String responseString = parseCommandLine(requestString);
+                String responseString = "";
+
+                if (compareStringsWithChar("R1", requestString)) {
+                    read(1);
+                    responseString = "Reading result";
+                } else if (compareStringsWithChar("R2", requestString)) {
+                    read(2);
+                    responseString = "Reading result";
+                } else if (compareStringsWithChar("W1", requestString)) {
+                    write(1);
+                    responseString = "Writing result";
+                } else if (compareStringsWithChar("W2", requestString)) {
+                    write(2);
+                    responseString = "Writing result";
+                } else {
+                    responseString = parseCommandLine(requestString);
+                }
+
+                System.out.println("-----------------------");
 
                 // ByteBuffer is tricky, you have to flip when switch from read to write, or vice-versa
                 buffer.flip();
@@ -810,44 +828,6 @@ public class MultiplexServer {
         return true;
     }
 
-    private void newClient(ServerSocketChannel server, Selector selector) {
-        try {
-            SocketChannel client = server.accept();
-            client.configureBlocking(false);
-            logger.info("New client from {}", client.getRemoteAddress());
-            client.register(selector, OP_READ, client);
-        } catch (IOException e) {
-            logger.error("Failed to accept client", e);
-        }
-    }
-
-    private void unregisterClient(SelectionKey s) {
-        try {
-            s.cancel();
-            s.channel().close();
-        } catch (IOException e) {
-            logger.error("Failed to clean up", e);
-        }
-    }
-
-    private void runLoop(ServerSocketChannel server, Selector selector) throws IOException {
-        // Check if there is any event (eg. new client or new data) happened
-        selector.select();
-
-        for (SelectionKey s : selector.selectedKeys()) {
-            // Acceptable means there is a new incoming
-            if (s.isAcceptable()) {
-                newClient(server, selector);
-
-                // Readable means this client has sent data or closed
-            } else if (s.isReadable()) {
-                readAndEcho(s);
-            }
-        }
-        // We must clear this set, otherwise the select will return the same value again
-        selector.selectedKeys().clear();
-    }
-
     private String postHttpResponse(String urlString, HashMap<String, String> headerKeyValuePairHashMap, String jsonData) {
         StringBuilder stringBuilder;
 
@@ -888,6 +868,78 @@ public class MultiplexServer {
         }
 
         return stringBuilder.toString();
+    }
+
+    private void read(int readerId) {
+        synchronized (this) {
+            numberOfReaders++;
+            System.out.println("Reader " + readerId + " starts reading.");
+        }
+
+        System.out.println("Reader " + readerId + " is now reading.");
+
+        synchronized (this) {
+            System.out.println("Reader " + readerId + " stops reading.");
+
+            numberOfReaders--;
+
+            if (numberOfReaders == 0)
+                this.notifyAll();
+        }
+    }
+
+    private synchronized void write(int writerId) {
+        while (numberOfReaders != 0) {
+            try {
+                this.wait();
+            } catch (InterruptedException e) {
+
+            }
+        }
+
+        System.out.println("Writer " + writerId + " starts writing.");
+
+        System.out.println("Writer " + writerId + " stops writing.");
+
+        this.notifyAll();
+    }
+
+    private void newClient(ServerSocketChannel server, Selector selector) {
+        try {
+            SocketChannel client = server.accept();
+            client.configureBlocking(false);
+            logger.info("New client from {}", client.getRemoteAddress());
+            client.register(selector, OP_READ, client);
+        } catch (IOException e) {
+            logger.error("Failed to accept client", e);
+        }
+    }
+
+    private void unregisterClient(SelectionKey s) {
+        try {
+            s.cancel();
+            s.channel().close();
+        } catch (IOException e) {
+            logger.error("Failed to clean up", e);
+        }
+    }
+
+    private void runLoop(ServerSocketChannel server, Selector selector) throws IOException {
+        // Check if there is any event (eg. new client or new data) happened
+        selector.select();
+
+        for (SelectionKey s : selector.selectedKeys()) {
+            // Acceptable means there is a new incoming
+            if (s.isAcceptable()) {
+                newClient(server, selector);
+
+                // Readable means this client has sent data or closed
+            } else if (s.isReadable()) {
+                readAndEcho(s);
+            }
+        }
+        // We must clear this set, otherwise the select will return the same value again
+        selector.selectedKeys().clear();
     }
 
     private void listenAndServe(int port) throws IOException {
