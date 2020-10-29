@@ -14,10 +14,28 @@ public class FileSystem {
 
         System.out.println(Files.exists(Paths.get(rootDirectoryPath + "/Tes.txt")));
 
+        listAllFiles(rootDirectoryPath);
+
         createFile(rootDirectoryPath, "AAAAAA", ".txt");
         writeFile(rootDirectoryPath, "123", ".txt", "$$$$$$$$$ ????????", false);
 
         copyFile(rootDirectoryPath, rootDirectoryPath + "/download", "123", ".txt");
+    }
+
+    public static void listAllFiles(String path){
+        String[] fileNameArray;
+
+        // Creates a new File instance by converting the given pathname string
+        // into an abstract pathname
+        File f = new File(path);
+
+        // Populates the array with names of files and directories
+        fileNameArray = f.list();
+
+        // For each pathname in the pathnames array
+        // Print the names of files and directories
+        for (String fileNname : fileNameArray)
+            System.out.println(fileNname);
     }
 
     public static void createFile(String path, String fileName, String format) {
