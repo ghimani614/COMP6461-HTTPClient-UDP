@@ -957,6 +957,9 @@ public class MultiplexServer {
     }
 
     public static void main(String[] args) throws IOException {
+        ServerThread serverThread = new ServerThread();
+        serverThread.start();
+
         OptionParser parser = new OptionParser();
         parser.acceptsAll(asList("port", "p"), "Listening port")
                 .withOptionalArg()

@@ -41,7 +41,9 @@ public class httpc {
 
     private static void runClient(SocketAddress endpoint) throws IOException {
         try (SocketChannel socket = SocketChannel.open()) {
+
             socket.connect(endpoint);
+
             System.out.println("httfs command: Type any thing then ENTER.");
             readEchoAndRepeat(socket);
         }
