@@ -154,4 +154,22 @@ public class FileSystem {
 
         return commandLineString;
     }
+    /* getting list of files in the directory */
+    public void getFilesList(String pathRoute){
+        String[] fileList;
+        File f= new File(pathRoute);
+        if(f.isDirectory()) {
+
+            if (pathRoute.contains("..")) {
+                System.out.println("HTTP Error 403: Access Denied");
+            }
+        }else{
+            System.out.println("Directory doesn't exist");
+        }
+        //getting list of all files in the directory
+        fileList = f.list();
+
+        //printing names of files
+        for(String files:fileList) System.out.println(files);
+    }
 }
