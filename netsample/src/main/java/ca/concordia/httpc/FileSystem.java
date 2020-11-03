@@ -103,21 +103,23 @@ public class FileSystem {
         }
     }
 
-    public void copyFile(String previousPath, String newPath, String fileName, String format) {
+    public int copyFile(String previousPath, String newPath, String fileName, String format) {
         Path originalFilePath = Paths.get(previousPath + "/" + fileName + format);
         Path targetFilePath = Paths.get(newPath + "/" + fileName + format);
 
-        if (Files.exists(originalFilePath) & Files.notExists(targetFilePath)) {
-            try {
-                Files.copy(originalFilePath, targetFilePath);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+        if (Files.notExists(originalFilePath))
+            return 9;
 
-            System.out.println("Successfully copied file");
-        } else {
-            System.out.println("Failed to copy file: Target file already exists");
+        if (Files.exists(targetFilePath))
+            return 11;
+
+        try {
+            Files.copy(originalFilePath, targetFilePath);
+        } catch (IOException e) {
+            return 5;
         }
+
+        return 0;
     }
 
     private boolean compareStringsWithChar(String string1, String string2) {
