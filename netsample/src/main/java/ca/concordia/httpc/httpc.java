@@ -16,6 +16,8 @@ import java.util.Scanner;
 import static java.util.Arrays.asList;
 
 public class httpc {
+    private static int port = 8080;
+    private static Scanner scanner = new Scanner(System.in);
 
     // readFully reads until the request is fulfilled or the socket is closed
     private static void readFully(SocketChannel socket, ByteBuffer buf, int size) throws IOException {
@@ -27,7 +29,7 @@ public class httpc {
         Scanner scanner = new Scanner(System.in);
         while (scanner.hasNextLine()) {
             String line = scanner.nextLine();
-            ByteBuffer buf = ByteBuffer.allocate(2048);
+            ByteBuffer buf = ByteBuffer.allocate(4096);
 
             int n = socket.write(ByteBuffer.wrap(line.getBytes(StandardCharsets.UTF_8)));
             buf.clear();
@@ -44,12 +46,15 @@ public class httpc {
 
             socket.connect(endpoint);
 
-            System.out.println("httfs command: Type any thing then ENTER.");
+            System.out.println("httfs command ready: Type any thing then ENTER.");
             readEchoAndRepeat(socket);
         }
     }
 
     public static void main(String[] args) throws IOException {
+        System.out.print("Port: ");
+        port = Integer.parseInt(scanner.nextLine());
+
         OptionParser parser = new OptionParser();
         parser.acceptsAll(asList("host", "h"), "EchoServer hostname")
                 .withOptionalArg()
@@ -57,7 +62,7 @@ public class httpc {
 
         parser.acceptsAll(asList("port", "p"), "EchoServer listening port")
                 .withOptionalArg()
-                .defaultsTo("8010");
+                .defaultsTo(port + "");
 
         OptionSet opts = parser.parse(args);
 

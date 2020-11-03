@@ -1,6 +1,7 @@
 package ca.concordia.httpc;
 
 
+import ca.concordia.echo.MultiplexEchoServer;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import org.json.simple.JSONObject;
@@ -29,6 +30,20 @@ import static java.util.Arrays.asList;
 public class MultiplexServer {
     private static final Logger logger = LoggerFactory.getLogger(ca.concordia.echo.MultiplexEchoServer.class);
 
+    private static ServerCommandThread serverThread = new ServerCommandThread();
+
+    private FileSystem fileSystem = new FileSystem();
+
+    private static int port = 8080;
+
+    private static String workingDirectoryPath = FileSystem.rootDirectoryRelativePath;
+    /*
+    C:\Users\Himani\IdeaProjects\COMP6461-httpServerApplication\working-directory1
+    /Users/hongyushen/Documents/IntelliJProject/COMP6461-httpServerApplication/working-directory1
+    */
+
+    public static boolean serverStarted = false;
+
     private String currentURL = "";
     private String redirectedURL = "", redirectionResultString = "";
 
@@ -37,7 +52,7 @@ public class MultiplexServer {
     private HashMap<String, String> headerKeyValuePairHashMap;
 
     // Uses a single buffer to demonstrate that all clients are running in a single thread
-    private final ByteBuffer buffer = ByteBuffer.allocate(2048);
+    private final ByteBuffer buffer = ByteBuffer.allocate(4096);
 
     private int numberOfReaders = 0, numberOfWriters = 0;
 
@@ -79,10 +94,8 @@ public class MultiplexServer {
                     write(2);
                     responseString = "Writing result";
                 } else {
-                    responseString = parseCommandLine(requestString);
+                    responseString = parseHttpfsClientCommandLine(requestString);
                 }
-
-                System.out.println("-----------------------");
 
                 // ByteBuffer is tricky, you have to flip when switch from read to write, or vice-versa
                 buffer.flip();
@@ -95,7 +108,7 @@ public class MultiplexServer {
         }
     }
 
-    private String parseCommandLine(String commandLineString) {
+    private String parseClientCommandLine(String commandLineString) {
         commandLineString = preprocessCommandLine(commandLineString);
 
         String[] commandLineStringArray = commandLineString.split(" ");
@@ -608,12 +621,348 @@ public class MultiplexServer {
         }
     }
 
+    public String parseHttpfsClientCommandLine(String commandLineString) {
+        commandLineString = preprocessCommandLine(commandLineString);
+
+        String[] commandLineStringArray = commandLineString.split(" ");
+
+        // Remove extra empty characters
+        for (int index = 0; index < commandLineStringArray.length; index++)
+            commandLineStringArray[index] = commandLineStringArray[index].replaceAll("\u0000.*", "");
+
+        if (commandLineStringArray.length > 0) {
+            // Check the starting word, must start with httpfs
+
+            if (commandLineStringArray[0].compareTo("httpfs") != 0) {
+                return "Invalid syntax";
+            } else {
+                if (commandLineStringArray.length >= 2) {
+                    if (commandLineStringArray.length == 3) {
+                        if (compareStringsWithChar("get", commandLineStringArray[1])) {
+                            if (verifyRequestURL(commandLineStringArray[2]) == 0) {
+                                String localhostString = "http://localhost:" + port + "/";
+
+                                if (commandLineStringArray[2].length() == (localhostString + workingDirectoryPath + "/").length()) {
+                                    // GET /
+
+                                    return fileSystem.listAllFiles(workingDirectoryPath);
+                                } else if (commandLineStringArray[2].length() > (localhostString + workingDirectoryPath + "/").length()) {
+                                    // GET /foo
+                                    String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]);
+
+                                    if (checkSecureAccess(filePath) != 0)
+                                        return "Access restricted";
+
+                                    if (fileSystem.directoryExists(filePath)) {
+                                        if (fileSystem.readFile(filePath) == 0) {
+
+                                            return fileSystem.fileContentString;
+                                        } else {
+                                            return "Target file doesn't exist";
+                                        }
+                                    } else {
+                                        return "Target file doesn't exist";
+                                    }
+                                }
+                            } else {
+                                return "Wrong request URL";
+                            }
+                        }
+                    } else if (commandLineStringArray.length == 4) {
+                        String[] fourthTermStringArray = commandLineStringArray[3].split(":");
+
+                        if (compareStringsWithChar("Content-Type", fourthTermStringArray[0])) {
+                            // GET /foo Content-Type:type/subtype
+
+                            System.out.println("4");
+                        } else if (compareStringsWithChar("Content-Disposition", fourthTermStringArray[0])) {
+                            // GET /foo Content-Disposition:inline/attachment
+
+                            System.out.println("5");
+                        }
+                    } else if (commandLineStringArray.length == 5) {
+                        if (compareStringsWithChar("post", commandLineStringArray[1])) {
+                            if (compareStringsWithChar("-d", commandLineStringArray[3])) {
+                                if (verifyRequestURL(commandLineStringArray[2]) == 0) {
+                                    String localhostString = "http://localhost:" + port + "/";
+
+                                    if (commandLineStringArray[2].length() > localhostString.length()) {
+                                        // POST /bar -d inline-data
+                                        String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]);
+
+                                        if (checkSecureAccess(filePath) != 0)
+                                            return "Access restricted";
+
+                                        String fileName = "";
+
+                                        // Extract the file name
+                                        for (int index = filePath.length() - 1; index >= 0; index--) {
+                                            if (filePath.charAt(index) == '/' | filePath.charAt(index) == 92) {
+                                                fileName = filePath.substring(index + 1, filePath.length());
+
+                                                // Exclude the file name in the path
+                                                filePath = filePath.substring(0, index + 1);
+                                                break;
+                                            }
+                                        }
+
+                                        String fileFormat = "";
+
+                                        // Extract the file format
+                                        for (int index = 0; index < fileName.length(); index++) {
+                                            if (fileName.charAt(index) == '.') {
+                                                fileFormat = fileName.substring(index, fileName.length());
+
+                                                // Exclude the file format in the file name
+                                                fileName = fileName.substring(0, index);
+                                                break;
+                                            }
+                                        }
+
+                                        if (fileSystem.directoryExists(filePath)) {
+                                            int statusCode = fileSystem.writeFile(filePath, fileName, fileFormat, commandLineStringArray[4], false);
+
+                                            if (statusCode == 0) {
+                                                return "File written successfully";
+                                            } else if (statusCode == 5) {
+                                                return "Failed to create file";
+                                            } else if (statusCode == 9) {
+                                                return "Target file doesn't exist";
+                                            }
+                                        } else {
+                                            return "Target file doesn't exist";
+                                        }
+                                    } else {
+                                        return "Wrong request URL";
+                                    }
+                                } else {
+                                    return "Wrong request URL";
+                                }
+                            }
+                        } else if (compareStringsWithChar("get", commandLineStringArray[1])) {
+                            String[] fourthTermStringArray = commandLineStringArray[3].split(":");
+                            String[] fifthTermStringArray = commandLineStringArray[4].split(":");
+
+                            if (compareStringsWithChar("Content-Type", fourthTermStringArray[0]) & compareStringsWithChar("Content-Disposition", fifthTermStringArray[0])) {
+                                // GET /foo Content-Type:type/subtype Content-Disposition
+
+                                System.out.println("6");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return "Invalid syntax";
+    }
+
+    public String parseServerCommandLine(String commandLineString) {
+        commandLineString = preprocessCommandLine(commandLineString);
+
+        String[] commandLineStringArray = commandLineString.split(" ");
+
+        // Remove extra empty characters
+        for (int index = 0; index < commandLineStringArray.length; index++)
+            commandLineStringArray[index] = commandLineStringArray[index].replaceAll("\u0000.*", "");
+
+        if (commandLineStringArray.length > 0) {
+            // Check the starting word, must start with httpfs
+
+            if (commandLineStringArray[0].compareTo("httpfs") != 0) {
+                return "Invalid syntax";
+            } else {
+                String debuggingMessages = "";
+
+                if (commandLineStringArray.length == 1 & compareStringsWithChar("httpfs", commandLineStringArray[0])) {
+                    if (!serverStarted) {
+                        serverThread.confirmedToRunServer = true;
+
+                        return "Server is running";
+                    } else {
+                        return "Server is running already";
+                    }
+                } else if (commandLineStringArray.length == 2) {
+                    if (compareStringsWithChar("-v", commandLineStringArray[1])) {
+                        // httpfs -v
+                        if (!serverStarted) {
+                            serverThread.confirmedToRunServer = true;
+
+                            debuggingMessages = getDebuggingMessages();
+
+                            return "Server is running\n\n" + debuggingMessages;
+                        } else {
+                            debuggingMessages = getDebuggingMessages();
+
+                            return "Server is running already\n\n" + debuggingMessages;
+                        }
+                    }
+                } else if (commandLineStringArray.length == 3) {
+                    if (compareStringsWithChar("-p", commandLineStringArray[1])) {
+                        // httpfs -p PORT
+                        int statusCode = setPortNumber(Integer.parseInt(commandLineStringArray[2]));
+
+                        String changingPortResponseString = "";
+
+                        if (statusCode == 0)
+                            changingPortResponseString = "Port number changed";
+                        else
+                            changingPortResponseString = "Not allowed to change port number after server establishment";
+
+                        if (!serverStarted) {
+                            serverThread.confirmedToRunServer = true;
+
+                            return "Server is running\n\n" + changingPortResponseString;
+                        } else {
+                            return "Server is running already\n\n" + changingPortResponseString;
+                        }
+                    } else if (compareStringsWithChar("-d", commandLineStringArray[1])) {
+                        // httpfs -d PATH-TO-DIR
+                        int statusCode = setWorkingDirectory(commandLineStringArray[2]);
+
+                        String changingWorkingDirectoryResponseString = "";
+
+                        if (statusCode == 0)
+                            changingWorkingDirectoryResponseString = "Working directory changed";
+                        else
+                            changingWorkingDirectoryResponseString = "Working directory doesn't exist";
+
+                        if (!serverStarted) {
+                            serverThread.confirmedToRunServer = true;
+
+                            return "Server is running\n\n" + changingWorkingDirectoryResponseString;
+                        } else {
+                            return "Server is running already\n\n" + changingWorkingDirectoryResponseString;
+                        }
+                    }
+                } else if (commandLineStringArray.length == 4) {
+                    if (compareStringsWithChar("-v", commandLineStringArray[1])) {
+                        if (compareStringsWithChar("-p", commandLineStringArray[2])) {
+                            // httpfs -v -p PORT
+                            int statusCode = setPortNumber(Integer.parseInt(commandLineStringArray[3]));
+
+                            String changingPortResponseString = "";
+
+                            if (statusCode == 0)
+                                changingPortResponseString = "Port number changed";
+                            else
+                                changingPortResponseString = "Not allowed to change port number after server establishment";
+
+                            debuggingMessages = getDebuggingMessages();
+
+                            if (!serverStarted) {
+                                serverThread.confirmedToRunServer = true;
+
+                                return "Server is running\n\n" + debuggingMessages + "\n\n" + changingPortResponseString;
+                            } else {
+                                return "Server is running already\n\n" + debuggingMessages + "\n\n" + changingPortResponseString;
+                            }
+                        } else if (compareStringsWithChar("-p", commandLineStringArray[2])) {
+                            // httpfs -v -d PATH-TO-DIR
+                            int statusCode = setWorkingDirectory(commandLineStringArray[3]);
+
+                            String changingWorkingDirectoryResponseString = "";
+
+                            if (statusCode == 0)
+                                changingWorkingDirectoryResponseString = "Working directory changed";
+                            else
+                                changingWorkingDirectoryResponseString = "Working directory doesn't exist";
+
+                            debuggingMessages = getDebuggingMessages();
+
+                            if (!serverStarted) {
+                                serverThread.confirmedToRunServer = true;
+
+                                return "Server is running\n\n" + debuggingMessages + "\n\n" + changingWorkingDirectoryResponseString;
+                            } else {
+                                return "Server is running already\n\n" + debuggingMessages + "\n\n" + changingWorkingDirectoryResponseString;
+                            }
+                        }
+                    }
+                } else if (commandLineStringArray.length == 5) {
+                    if (compareStringsWithChar("-p", commandLineStringArray[1])) {
+                        if (compareStringsWithChar("-d", commandLineStringArray[3])) {
+                            // httpfs -p PORT -d PATH-TO-DIR
+
+                            int statusCode = setPortNumber(Integer.parseInt(commandLineStringArray[2]));
+
+                            String changingPortResponseString = "";
+
+                            if (statusCode == 0)
+                                changingPortResponseString = "Port number changed";
+                            else
+                                changingPortResponseString = "Not allowed to change port number after server establishment";
+
+
+                            statusCode = setWorkingDirectory(commandLineStringArray[5]);
+
+                            String changingWorkingDirectoryResponseString = "";
+
+                            if (statusCode == 0)
+                                changingWorkingDirectoryResponseString = "Working directory changed";
+                            else
+                                changingWorkingDirectoryResponseString = "Working directory doesn't exist";
+
+                            if (!serverStarted) {
+                                serverThread.confirmedToRunServer = true;
+
+                                return "Server is running\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
+                            } else {
+                                return "Server is running already\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
+                            }
+                        }
+                    }
+                } else if (commandLineStringArray.length == 6) {
+                    if (compareStringsWithChar("-v", commandLineStringArray[1])) {
+                        if (compareStringsWithChar("-p", commandLineStringArray[2])) {
+                            if (compareStringsWithChar("-d", commandLineStringArray[4])) {
+                                // httpfs -v -p PORT -d PATH-TO-DIR
+
+                                int statusCode = setPortNumber(Integer.parseInt(commandLineStringArray[3]));
+
+                                String changingPortResponseString = "";
+
+                                if (statusCode == 0)
+                                    changingPortResponseString = "Port number changed";
+                                else
+                                    changingPortResponseString = "Not allowed to change port number after server establishment";
+
+
+                                statusCode = setWorkingDirectory(commandLineStringArray[5]);
+
+                                String changingWorkingDirectoryResponseString = "";
+
+                                if (statusCode == 0)
+                                    changingWorkingDirectoryResponseString = "Working directory changed";
+                                else
+                                    changingWorkingDirectoryResponseString = "Working directory doesn't exist";
+
+                                debuggingMessages = getDebuggingMessages();
+
+                                if (!serverStarted) {
+                                    serverThread.confirmedToRunServer = true;
+
+                                    return "Server is running\n\n" + debuggingMessages + "\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
+                                } else {
+                                    return "Server is running already\n\n" + debuggingMessages + "\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return "Invalid syntax";
+    }
+
     private String preprocessCommandLine(String commandLineString) {
         boolean repeat = true;
 
         while (repeat) {
             repeat = false;
 
+            // Remove extra empty characters in the string
             for (int characterIndex = 0; characterIndex < commandLineString.length() - 1; characterIndex++) {
                 if (commandLineString.charAt(characterIndex) == ':' | commandLineString.charAt(characterIndex) == ',') {
                     if (commandLineString.charAt(characterIndex + 1) == ' ') {
@@ -870,6 +1219,55 @@ public class MultiplexServer {
         return stringBuilder.toString();
     }
 
+    private int verifyRequestURL(String urlString) {
+        String localhostString = "http://localhost:" + port + "/";
+
+        if (urlString.length() < localhostString.length())
+            return 2;
+
+        if (compareStringsWithChar(localhostString, urlString.substring(0, localhostString.length())))
+            return 0;
+        else
+            return 2;
+    }
+
+    private String extractFilePathFromRequestURL(String urlString) {
+        String localhostString = "http://localhost:" + port + "/";
+
+        return urlString.substring(localhostString.length(), urlString.length());
+    }
+
+    private String getDebuggingMessages() {
+        return "Current port: " + port + "\n" + "Current directory: " + workingDirectoryPath;
+    }
+
+    private int setWorkingDirectory(String path) {
+        if (fileSystem.directoryExists(path)) {
+            workingDirectoryPath = path;
+            return 0;
+        } else {
+            return 9;
+        }
+    }
+
+    private int setPortNumber(int portNumber) {
+        if (!serverStarted) {
+            port = portNumber;
+
+            return 0;
+        } else {
+            return 2;
+        }
+    }
+
+    private int checkSecureAccess(String path) {
+        for (int index = 0; index < workingDirectoryPath.length(); index++)
+            if (Character.compare(path.charAt(index), workingDirectoryPath.charAt(index)) != 0)
+                return 4;
+
+        return 0;
+    }
+
     private void read(int readerId) {
         synchronized (this) {
             numberOfReaders++;
@@ -942,7 +1340,7 @@ public class MultiplexServer {
         selector.selectedKeys().clear();
     }
 
-    private void listenAndServe(int port) throws IOException {
+    private void listenAndServe() throws IOException {
         try (ServerSocketChannel server = ServerSocketChannel.open()) {
             server.bind(new InetSocketAddress(port));
             server.configureBlocking(false);
@@ -956,17 +1354,13 @@ public class MultiplexServer {
         }
     }
 
+    public void runServer() throws IOException {
+        serverStarted = true;
+        System.out.println("Server is running");
+        listenAndServe();
+    }
+
     public static void main(String[] args) throws IOException {
-        ServerThread serverThread = new ServerThread();
         serverThread.start();
-
-        OptionParser parser = new OptionParser();
-        parser.acceptsAll(asList("port", "p"), "Listening port")
-                .withOptionalArg()
-                .defaultsTo("8010");
-
-        OptionSet opts = parser.parse(args);
-        int port = Integer.parseInt((String) opts.valueOf("port"));
-        new MultiplexServer().listenAndServe(port);
     }
 }

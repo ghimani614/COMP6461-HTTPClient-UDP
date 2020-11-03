@@ -2,45 +2,73 @@ package ca.concordia.httpc;
 
 import sun.awt.AWTAccessor;
 
-import java.io.IOException;
-import java.io.File;
+import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class FileSystem {
-    private static String rootDirectoryPath = new File("").getAbsolutePath();
+    public static String rootDirectoryRelativePath = new File("").getAbsolutePath();
 
-    public static void main(String[] args) {
-        System.out.println(Paths.get(rootDirectoryPath));
+    public String fileContentString = "";
 
-        System.out.println(Files.exists(Paths.get(rootDirectoryPath + "/Tes.txt")));
+//    public static void main(String[] args) {
+//        System.out.println(Paths.get(rootDirectoryRelativePath));
 
-        listAllFiles(rootDirectoryPath);
+//        System.out.println(Files.exists(Paths.get(rootDirectoryPath +"/Tes.txt")));
+//
+//        listAllFiles(rootDirectoryPath);
+//
+//        createFile(rootDirectoryPath, "BBB", ".txt");
+//        System.out.println(Files.exists(Paths.get("/Users/hongyushen/Documents/IntelliJProject/COMP6461-httpServerApplication/working-directory1/")));
+//        System.out.println(writeFile(rootDirectoryPath, "67", ".txt", "**** ????????", false));
+//        System.out.println(writeFile("/Users/hongyushen/Documents/IntelliJProject/COMP6461-httpServerApplication/working-directory1/", "bar", ".txt", "**** ????????", false));
+//
+//        copyFile(rootDirectoryPath, rootDirectoryPath + "/download", "678", ".txt");
+//    }
 
-        createFile(rootDirectoryPath, "BBB", ".txt");
-        writeFile(rootDirectoryPath, "678", ".txt", "**** ????????", false);
-
-        copyFile(rootDirectoryPath, rootDirectoryPath + "/download", "678", ".txt");
+    public boolean directoryExists(String path) {
+        return Files.exists(Paths.get(path));
     }
 
-    public static void listAllFiles(String path){
+    public String listAllFiles(String path) {
         String[] fileNameArray;
 
-        // Creates a new File instance by converting the given pathname string
-        // into an abstract pathname
-        File f = new File(path);
-
         // Populates the array with names of files and directories
-        fileNameArray = f.list();
+        fileNameArray = new File(path).list();
 
-        // For each pathname in the pathnames array
+        String fileNamesString = "";
+
         // Print the names of files and directories
         for (String fileNname : fileNameArray)
-            System.out.println(fileNname);
+            fileNamesString += fileNname + "\n";
+
+        return fileNamesString;
     }
 
-    public static void createFile(String path, String fileName, String format) {
+    public int readFile(String path) {
+        File file = new File(path);
+
+        BufferedReader bufferedReader = null;
+
+        try {
+            bufferedReader = new BufferedReader(new FileReader(file));
+
+            fileContentString = "";
+            String line = "";
+
+            while ((line = bufferedReader.readLine()) != null)
+                fileContentString += line + "\n";
+        } catch (FileNotFoundException e) {
+            return 10;
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        return 0;
+    }
+
+    public int createFile(String path, String fileName, String format) {
         Path filePath = Paths.get(path + "/" + fileName + format);
 
         if (Files.notExists(filePath)) {
@@ -50,33 +78,32 @@ public class FileSystem {
                 e.printStackTrace();
             }
 
-            System.out.println("Successfully created file");
+            return 0;
         } else {
-            System.out.println("File already exists");
+            return 9;
         }
     }
 
-    public static void writeFile(String path, String fileName, String format, String content, boolean overwrite) {
-        Path filePath = Paths.get(path + "/" + fileName + format);
+    public int writeFile(String path, String fileName, String format, String content, boolean overwrite) {
+        if (!Files.exists(Paths.get(path)))
+            return 9;
 
         // If it doesn't overwrite, keep both files
-        if (Files.exists(filePath) & !overwrite) {
+        if (Files.exists(Paths.get(path + fileName + format)) & !overwrite)
             fileName += " copy";
-            filePath = Paths.get(path + "/" + fileName + format);
-        }
 
         try {
-            Files.write(filePath, content.getBytes());
+            Files.write(Paths.get(path + fileName + format), content.getBytes());
 
-            System.out.println("Successfully wrote file");
+            return 0;
         } catch (IOException e) {
             e.printStackTrace();
 
-            System.out.println("Failed to write file");
+            return 5;
         }
     }
 
-    public static void copyFile(String previousPath, String newPath, String fileName, String format) {
+    public void copyFile(String previousPath, String newPath, String fileName, String format) {
         Path originalFilePath = Paths.get(previousPath + "/" + fileName + format);
         Path targetFilePath = Paths.get(newPath + "/" + fileName + format);
 
@@ -107,69 +134,48 @@ public class FileSystem {
 
         return true;
     }
-    public void parseCommandLine(String commandLineString){
-        commandLineString = preprocessCommandLine(commandLineString);
 
+    public void parseCommandLine(String commandLineString) {
         String[] commandLineStringArray = commandLineString.split(" ");
         if (commandLineStringArray.length > 0) {
-         //check the starting word, must start with httpfs
+            //check the starting word, must start with httpfs
             if (commandLineStringArray[0].compareTo("httpfs") != 0) {
                 System.out.print("Invalid syntax");
             } else {
                 //check if httpfs -v
-             if(compareStringsWithChar("-v", commandLineStringArray[1])){
-                 //debugging message displayed
-                }
-                else if(compareStringsWithChar("-p", commandLineStringArray[1])){
-                 //port change
+                if (compareStringsWithChar("-v", commandLineStringArray[1])) {
+                    //debugging message displayed
+                } else if (compareStringsWithChar("-p", commandLineStringArray[1])) {
+                    //port change
 
-                }else if(compareStringsWithChar("-d", commandLineStringArray[1])){
-                 //directory mentioned
+                } else if (compareStringsWithChar("-d", commandLineStringArray[1])) {
+                    //directory mentioned
 
-                }else{
-                 System.out.println("Invalid format");
+                } else {
+                    System.out.println("Invalid format");
                 }
             }
-        }else{
+        } else {
             System.out.println("No command");
         }
     }
-    private String preprocessCommandLine(String commandLineString) {
-        boolean repeat = true;
 
-        while (repeat) {
-            repeat = false;
-
-            for (int characterIndex = 0; characterIndex < commandLineString.length() - 1; characterIndex++) {
-                if (commandLineString.charAt(characterIndex) == ':' | commandLineString.charAt(characterIndex) == ',') {
-                    if (commandLineString.charAt(characterIndex + 1) == ' ') {
-                        commandLineString = commandLineString.substring(0, characterIndex + 1) + commandLineString.substring(characterIndex + 2, commandLineString.length());
-                        repeat = true;
-
-                        break;
-                    }
-                }
-            }
-        }
-
-        return commandLineString;
-    }
     /* getting list of files in the directory */
-    public void getFilesList(String pathRoute){
+    public void getFilesList(String pathRoute) {
         String[] fileList;
-        File f= new File(pathRoute);
-        if(f.isDirectory()) {
+        File f = new File(pathRoute);
+        if (f.isDirectory()) {
 
             if (pathRoute.contains("..")) {
                 System.out.println("HTTP Error 403: Access Denied");
             }
-        }else{
+        } else {
             System.out.println("Directory doesn't exist");
         }
         //getting list of all files in the directory
         fileList = f.list();
 
         //printing names of files
-        for(String files:fileList) System.out.println(files);
+        for (String files : fileList) System.out.println(files);
     }
 }
