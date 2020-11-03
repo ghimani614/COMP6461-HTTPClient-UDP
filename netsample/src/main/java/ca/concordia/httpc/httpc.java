@@ -29,15 +29,18 @@ public class httpc {
         Scanner scanner = new Scanner(System.in);
         while (scanner.hasNextLine()) {
             String line = scanner.nextLine();
-            ByteBuffer buf = ByteBuffer.allocate(4096);
+            if (line != "") {
+                System.out.println(line);
+                ByteBuffer buf = ByteBuffer.allocate(4096);
 
-            int n = socket.write(ByteBuffer.wrap(line.getBytes(StandardCharsets.UTF_8)));
-            buf.clear();
+                int n = socket.write(ByteBuffer.wrap(line.getBytes(StandardCharsets.UTF_8)));
+                buf.clear();
 
-            // Receive all what we have sent
-            readFully(socket, buf, n);
-            buf.flip();
-            System.out.println("Response:\n" + utf8.decode(buf));
+                // Receive all what we have sent
+                readFully(socket, buf, n);
+                buf.flip();
+                System.out.println("Response:\n" + utf8.decode(buf));
+            }
         }
     }
 

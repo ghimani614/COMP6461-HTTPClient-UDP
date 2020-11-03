@@ -681,6 +681,17 @@ public class MultiplexServer {
                             System.out.println("5");
                         }
                     } else if (commandLineStringArray.length == 5) {
+                        if (compareStringsWithChar("get", commandLineStringArray[1])) {
+                            String[] fourthTermStringArray = commandLineStringArray[3].split(":");
+                            String[] fifthTermStringArray = commandLineStringArray[4].split(":");
+
+                            if (compareStringsWithChar("Content-Type", fourthTermStringArray[0]) & compareStringsWithChar("Content-Disposition", fifthTermStringArray[0])) {
+                                // GET /foo Content-Type:type/subtype Content-Disposition
+
+                                System.out.println("6");
+                            }
+                        }
+                    } else if (commandLineStringArray.length == 6) {
                         if (compareStringsWithChar("post", commandLineStringArray[1])) {
                             if (compareStringsWithChar("-d", commandLineStringArray[3])) {
                                 if (verifyRequestURL(commandLineStringArray[2]) == 0) {
@@ -719,8 +730,29 @@ public class MultiplexServer {
                                             }
                                         }
 
+                                        // Extract the overwrite parameter
+                                        String[] overwriteStringArray = commandLineStringArray[5].split("=");
+
+                                        boolean overwrite = false;
+
+                                        if (overwriteStringArray.length != 2)
+                                            return "Invalid syntax";
+
+                                        if (compareStringsWithChar("true", overwriteStringArray[1]))
+                                            overwrite = true;
+                                        else if (compareStringsWithChar("false", overwriteStringArray[1]))
+                                            overwrite = false;
+                                        else
+                                            return "Invalid syntax";
+
+                                        // Remove apostrophes
+                                        if ((commandLineStringArray[4].charAt(0) == 39 & commandLineStringArray[4].charAt(commandLineStringArray[4].length() - 1) == 39)|(commandLineStringArray[4].charAt(0) == 8216 & commandLineStringArray[4].charAt(commandLineStringArray[4].length() - 1) == 8217))
+                                            commandLineStringArray[4] = commandLineStringArray[4].substring(1, commandLineStringArray[4].length() - 1);
+                                        else
+                                            return "Invalid syntax";
+
                                         if (fileSystem.directoryExists(filePath)) {
-                                            int statusCode = fileSystem.writeFile(filePath, fileName, fileFormat, commandLineStringArray[4], false);
+                                            int statusCode = fileSystem.writeFile(filePath, fileName, fileFormat, commandLineStringArray[4], overwrite);
 
                                             if (statusCode == 0) {
                                                 return "File written successfully";
@@ -738,15 +770,6 @@ public class MultiplexServer {
                                 } else {
                                     return "Wrong request URL";
                                 }
-                            }
-                        } else if (compareStringsWithChar("get", commandLineStringArray[1])) {
-                            String[] fourthTermStringArray = commandLineStringArray[3].split(":");
-                            String[] fifthTermStringArray = commandLineStringArray[4].split(":");
-
-                            if (compareStringsWithChar("Content-Type", fourthTermStringArray[0]) & compareStringsWithChar("Content-Disposition", fifthTermStringArray[0])) {
-                                // GET /foo Content-Type:type/subtype Content-Disposition
-
-                                System.out.println("6");
                             }
                         }
                     }

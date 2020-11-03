@@ -90,7 +90,7 @@ public class FileSystem {
 
         // If it doesn't overwrite, keep both files
         if (Files.exists(Paths.get(path + fileName + format)) & !overwrite)
-            fileName += " copy";
+            fileName += "Copy";
 
         try {
             Files.write(Paths.get(path + fileName + format), content.getBytes());
