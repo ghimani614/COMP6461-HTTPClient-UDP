@@ -8,7 +8,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 
 public class FileSystem {
-    public static String rootDirectoryRelativePath = new File("").getAbsolutePath();
+    public static String rootDirectoryAbsolutePath = new File("").getAbsolutePath();
 
     public String fileContentString = "";
 
@@ -31,22 +31,25 @@ public class FileSystem {
         return Files.exists(Paths.get(path));
     }
 
-    public String listAllFiles(String path) {
+    public int listAllFiles(String path) {
         String[] fileNameArray;
 
         // Populates the array with names of files and directories
         fileNameArray = new File(path).list();
 
-        String fileNamesString = "";
+        fileContentString = "";
 
         // Print the names of files and directories
         for (String fileNname : fileNameArray)
-            fileNamesString += fileNname + "\n";
+            fileContentString += fileNname + "\n";
 
-        return fileNamesString;
+        return 0;
     }
 
     public int readFile(String path) {
+        if (!Files.isRegularFile(Paths.get(path)))
+            return 8;
+
         File file = new File(path);
 
         BufferedReader bufferedReader = null;
