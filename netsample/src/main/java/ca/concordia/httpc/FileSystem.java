@@ -32,6 +32,9 @@ public class FileSystem {
     }
 
     public int listAllFiles(String path) {
+        if (Files.notExists(Paths.get(path)))
+            return 9;
+
         String[] fileNameArray;
 
         // Populates the array with names of files and directories

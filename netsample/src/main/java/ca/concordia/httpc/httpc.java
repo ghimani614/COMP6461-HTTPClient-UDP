@@ -30,7 +30,6 @@ public class httpc {
         while (scanner.hasNextLine()) {
             String line = scanner.nextLine();
             if (line != "") {
-                System.out.println(line);
                 ByteBuffer buf = ByteBuffer.allocate(4096);
 
                 int n = socket.write(ByteBuffer.wrap(line.getBytes(StandardCharsets.UTF_8)));

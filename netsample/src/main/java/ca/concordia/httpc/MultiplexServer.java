@@ -642,92 +642,88 @@ public class MultiplexServer {
                             if (verifyRequestURL(commandLineStringArray[2]) == 0) {
                                 String localhostString = "http://localhost:" + port + "/";
 
-                                if (commandLineStringArray[2].length() == (localhostString + workingDirectoryPath + "/").length()) {
-                                    // GET /
-                                    int statusCode = fileSystem.listAllFiles(workingDirectoryPath);
-
-                                    return fileSystem.fileContentString;
-                                } else if (commandLineStringArray[2].length() > (localhostString + workingDirectoryPath + "/").length()) {
-                                    // GET /foo
+                                if (commandLineStringArray[2].length() >= localhostString.length()) {
                                     String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]);
 
-                                    if (checkSecureAccess(filePath) != 0)
-                                        return "Access restricted";
+                                    boolean isAFile = false;
 
-                                    if (fileSystem.directoryExists(filePath)) {
-                                        int statusCode = fileSystem.readFile(filePath);
+                                    // Check if it contains a dot, if so, it is considered as a file, if not, it is a directory
+                                    for (int index = filePath.length() - 1; index >= 0; index--) {
+                                        if (filePath.charAt(index) == '.') {
+                                            isAFile = true;
+                                            break;
+                                        }
 
-                                        if (statusCode == 0) {
+                                        if (filePath.charAt(index) == '/' | filePath.charAt(index) == 92)
+                                            break;
+                                    }
+
+                                    if (!isAFile) {
+                                        // GET /
+                                        int statusCode = fileSystem.listAllFiles(filePath);
+
+                                        if (statusCode == 0)
                                             return fileSystem.fileContentString;
-                                        } else if (statusCode == 8) {
-                                            return "It's a directory, not a regular file";
-                                        } else if (statusCode == 10) {
+                                        else if (statusCode == 9)
+                                            return "Target directory doesn't exist";
+                                    } else {
+                                        // GET /foo
+                                        if (checkSecureAccess(filePath) != 0)
+                                            return "Access restricted";
+
+                                        if (fileSystem.directoryExists(filePath)) {
+                                            int statusCode = fileSystem.readFile(filePath);
+
+                                            if (statusCode == 0)
+                                                return fileSystem.fileContentString;
+                                            else if (statusCode == 8)
+                                                return "It's a directory, not a regular file";
+                                            else if (statusCode == 10)
+                                                return "Target file doesn't exist";
+                                        } else {
                                             return "Target file doesn't exist";
                                         }
-                                    } else {
-                                        return "Target file doesn't exist";
                                     }
                                 }
                             } else {
-                                return "Wrong request URL";
+                                return "Incorrect request URL";
                             }
                         }
                     } else if (commandLineStringArray.length == 4) {
-                        String[] fourthTermStringArray = commandLineStringArray[3].split(":");
+                        if (verifyRequestURL(commandLineStringArray[2]) == 0) {
+                            String[] fourthTermStringArray = commandLineStringArray[3].split(":");
 
-                        if (compareStringsWithChar("Content-Type", fourthTermStringArray[0])) {
-                            // GET /foo Content-Type:type/subtype
+                            if (compareStringsWithChar("Content-Type", fourthTermStringArray[0])) {
+                                // GET /foo Content-Type:type/subtype
 
-                            // Check if it contains only one slash
-                            int numberOfSlashes = 0;
-                            for (int index = 0; index < fourthTermStringArray[1].length(); index++) {
-                                if (fourthTermStringArray[1].charAt(index) == '/') {
-                                    if (numberOfSlashes == 0)
-                                        numberOfSlashes += 1;
-                                    else if (numberOfSlashes >= 1)
-                                        return "Invalid syntax";
+                                // Check if it contains only one slash
+                                int numberOfSlashes = 0;
+                                for (int index = 0; index < fourthTermStringArray[1].length(); index++) {
+                                    if (fourthTermStringArray[1].charAt(index) == '/') {
+                                        if (numberOfSlashes == 0)
+                                            numberOfSlashes += 1;
+                                        else if (numberOfSlashes >= 1)
+                                            return "Invalid syntax";
+                                    }
                                 }
-                            }
 
-                            String[] typeStringArray = fourthTermStringArray[1].split("/");
+                                String[] typeStringArray = fourthTermStringArray[1].split("/");
 
-                            String typeString = typeStringArray[0];
-                            String subtypeString = typeStringArray[1];
+                                String typeString = typeStringArray[0];
+                                String subtypeString = typeStringArray[1];
 
-                            String formatString = "";
+                                String formatString = "";
 
-                            if (compareStringsWithChar("text", typeString)) {
-                                if (compareStringsWithChar("plain", subtypeString))
-                                    formatString = ".txt";
-                                else
+                                if (compareStringsWithChar("text", typeString)) {
+                                    if (compareStringsWithChar("plain", subtypeString))
+                                        formatString = ".txt";
+                                    else
+                                        formatString = "." + subtypeString;
+                                } else {
                                     formatString = "." + subtypeString;
-                            } else {
-                                formatString = "." + subtypeString;
-                            }
-
-                            String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]) + formatString;
-
-                            if (checkSecureAccess(filePath) != 0)
-                                return "Access restricted";
-
-                            if (fileSystem.directoryExists(filePath)) {
-                                int statusCode = fileSystem.readFile(filePath);
-
-                                if (statusCode == 0) {
-                                    return fileSystem.fileContentString;
-                                } else if (statusCode == 8) {
-                                    return "It's a directory, not a regular file";
-                                } else if (statusCode == 10) {
-                                    return "Target file doesn't exist";
                                 }
-                            } else {
-                                return "Target file doesn't exist";
-                            }
-                        } else if (compareStringsWithChar("Content-Disposition", fourthTermStringArray[0])) {
-                            // GET /foo Content-Disposition:inline/attachment
 
-                            if (compareStringsWithChar("inline", fourthTermStringArray[1])) {
-                                String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]);
+                                String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]) + formatString;
 
                                 if (checkSecureAccess(filePath) != 0)
                                     return "Access restricted";
@@ -745,68 +741,161 @@ public class MultiplexServer {
                                 } else {
                                     return "Target file doesn't exist";
                                 }
-                            } else if (compareStringsWithChar("attachment", fourthTermStringArray[1])) {
+                            } else if (compareStringsWithChar("Content-Disposition", fourthTermStringArray[0])) {
+                                // GET /foo Content-Disposition:inline/attachment
+
                                 String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]);
 
-                                if (checkSecureAccess(filePath) != 0)
-                                    return "Access restricted";
+                                if (compareStringsWithChar("inline", fourthTermStringArray[1])) {
+                                    if (checkSecureAccess(filePath) != 0)
+                                        return "Access restricted";
 
-                                String fileName = "";
+                                    if (fileSystem.directoryExists(filePath)) {
+                                        int statusCode = fileSystem.readFile(filePath);
 
-                                // Extract the file name
-                                for (int index = filePath.length() - 1; index >= 0; index--) {
-                                    if (filePath.charAt(index) == '/' | filePath.charAt(index) == 92) {
-                                        fileName = filePath.substring(index + 1, filePath.length());
-
-                                        // Exclude the file name in the path
-                                        filePath = filePath.substring(0, index + 1);
-                                        break;
+                                        if (statusCode == 0) {
+                                            return fileSystem.fileContentString;
+                                        } else if (statusCode == 8) {
+                                            return "It's a directory, not a regular file";
+                                        } else if (statusCode == 10) {
+                                            return "Target file doesn't exist";
+                                        }
+                                    } else {
+                                        return "Target file doesn't exist";
                                     }
-                                }
+                                } else if (compareStringsWithChar("attachment", fourthTermStringArray[1])) {
+                                    if (checkSecureAccess(filePath) != 0)
+                                        return "Access restricted";
 
-                                String fileFormat = "";
+                                    String fileName = "";
 
-                                // Extract the file format
-                                for (int index = 0; index < fileName.length(); index++) {
-                                    if (fileName.charAt(index) == '.') {
-                                        fileFormat = fileName.substring(index, fileName.length());
+                                    // Extract the file name
+                                    for (int index = filePath.length() - 1; index >= 0; index--) {
+                                        if (filePath.charAt(index) == '/' | filePath.charAt(index) == 92) {
+                                            fileName = filePath.substring(index + 1, filePath.length());
 
-                                        // Exclude the file format in the file name
-                                        fileName = fileName.substring(0, index);
-                                        break;
+                                            // Exclude the file name in the path
+                                            filePath = filePath.substring(0, index + 1);
+                                            break;
+                                        }
                                     }
-                                }
 
-                                if (fileSystem.directoryExists(filePath)) {
-                                    int statusCode = fileSystem.copyFile(filePath, FileSystem.rootDirectoryAbsolutePath + "/download", fileName, fileFormat);
+                                    String fileFormat = "";
 
-                                    if (statusCode == 0)
-                                        return "File downloaded successfully";
-                                    else if (statusCode == 5)
-                                        return "Failed to write file";
-                                    else if (statusCode == 9)
-                                        return "Directory doesn't exist";
-                                    else if (statusCode == 11)
-                                        return "Failed to copy file: Target file already exists";
-                                    else
-                                        return "Invalid syntax";
+                                    // Extract the file format
+                                    for (int index = 0; index < fileName.length(); index++) {
+                                        if (fileName.charAt(index) == '.') {
+                                            fileFormat = fileName.substring(index, fileName.length());
+
+                                            // Exclude the file format in the file name
+                                            fileName = fileName.substring(0, index);
+                                            break;
+                                        }
+                                    }
+
+                                    if (fileSystem.directoryExists(filePath)) {
+                                        int statusCode = fileSystem.copyFile(filePath, FileSystem.rootDirectoryAbsolutePath + "/download", fileName, fileFormat);
+
+                                        if (statusCode == 0)
+                                            return "File downloaded successfully";
+                                        else if (statusCode == 5)
+                                            return "Failed to write file";
+                                        else if (statusCode == 9)
+                                            return "Target file doesn't exist";
+                                        else if (statusCode == 11)
+                                            return "Failed to copy file: Target file already exists";
+                                        else
+                                            return "Invalid syntax";
+                                    } else {
+                                        return "Target file doesn't exist";
+                                    }
                                 } else {
-                                    return "Target file doesn't exist";
+                                    return "Invalid Content-Disposition";
                                 }
-                            } else {
-                                return "Invalid Content-Disposition";
                             }
+                        } else {
+                            return "Incorrect request URL";
                         }
                     } else if (commandLineStringArray.length == 5) {
                         if (compareStringsWithChar("get", commandLineStringArray[1])) {
-                            String[] fourthTermStringArray = commandLineStringArray[3].split(":");
-                            String[] fifthTermStringArray = commandLineStringArray[4].split(":");
+                            if (verifyRequestURL(commandLineStringArray[2]) == 0) {
+                                String[] fourthTermStringArray = commandLineStringArray[3].split(":");
+                                String[] fifthTermStringArray = commandLineStringArray[4].split(":");
 
-                            if (compareStringsWithChar("Content-Type", fourthTermStringArray[0]) & compareStringsWithChar("Content-Disposition", fifthTermStringArray[0])) {
-                                // GET /foo Content-Type:type/subtype Content-Disposition
+                                if (compareStringsWithChar("Content-Type", fourthTermStringArray[0])) {
+                                    if (compareStringsWithChar("Content-Disposition", fifthTermStringArray[0])) {
+                                        // GET /foo Content-Type:type/subtype Content-Disposition
+
+                                        String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]);
+
+                                        String[] typeStringArray = fourthTermStringArray[1].split("/");
+
+                                        String typeString = typeStringArray[0];
+                                        String subtypeString = typeStringArray[1];
 
 
-                                System.out.println("6");
+                                        String fileName = "";
+
+                                        // Extract the file name
+                                        for (int index = filePath.length() - 1; index >= 0; index--) {
+                                            if (filePath.charAt(index) == '/' | filePath.charAt(index) == 92) {
+                                                fileName = filePath.substring(index + 1, filePath.length());
+
+                                                // Exclude the file name in the path
+                                                filePath = filePath.substring(0, index + 1);
+                                                break;
+                                            }
+                                        }
+
+                                        String formatString = "";
+
+                                        if (compareStringsWithChar("text", typeString)) {
+                                            if (compareStringsWithChar("plain", subtypeString))
+                                                formatString = ".txt";
+                                            else
+                                                formatString = "." + subtypeString;
+                                        } else {
+                                            formatString = "." + subtypeString;
+                                        }
+
+                                        if (checkSecureAccess(filePath) != 0)
+                                            return "Access restricted";
+
+                                        int statusCode = 0;
+
+                                        if (fileSystem.directoryExists(filePath)) {
+                                            if (compareStringsWithChar("inline", fifthTermStringArray[1])) {
+                                                statusCode = fileSystem.readFile(filePath + fileName + formatString);
+
+                                                if (statusCode == 0)
+                                                    return fileSystem.fileContentString;
+                                                else if (statusCode == 10)
+                                                    return "Target file doesn't exist";
+                                            } else if (compareStringsWithChar("attachment", fifthTermStringArray[1])) {
+                                                statusCode = fileSystem.copyFile(filePath, FileSystem.rootDirectoryAbsolutePath + "/download", fileName, formatString);
+
+                                                if (statusCode == 0)
+                                                    return "File downloaded successfully";
+                                                else if (statusCode == 5)
+                                                    return "Failed to write file";
+                                                else if (statusCode == 9)
+                                                    return "Target directory doesn't exist";
+                                                else if (statusCode == 11)
+                                                    return "Failed to copy file: Target file already exists";
+                                                else
+                                                    return "Invalid syntax";
+                                            } else {
+                                                return "Invalid Content-Disposition";
+                                            }
+                                        }
+                                    } else {
+                                        return "Invalid Content-Disposition";
+                                    }
+                                } else {
+                                    return "Invalid Invalid Content-Type";
+                                }
+                            } else {
+                                return "Incorrect request URL";
                             }
                         }
                     } else if (commandLineStringArray.length == 6) {
@@ -883,10 +972,10 @@ public class MultiplexServer {
                                             return "Target file doesn't exist";
                                         }
                                     } else {
-                                        return "Wrong request URL";
+                                        return "Incorrect request URL";
                                     }
                                 } else {
-                                    return "Wrong request URL";
+                                    return "Incorrect request URL";
                                 }
                             }
                         }
