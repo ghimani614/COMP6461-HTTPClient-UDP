@@ -78,6 +78,26 @@ httpc post -v -h key1:value1 key2:value2 -d '{"Assignment": 1}' 'http://httpbin.
 httpc post -v -h key1:value1 key2:value2 -f Data.json 'http://httpbin.org/post'
 
 
+## Status Codes
+
+0: No errors<br />
+1: Server is running<br />
+2: Server is running already<br />
+3: Incorrect request URL<br />
+4: Not allowed to change port number after server establishment<br />
+5: Access restricted<br />
+6: Failed to read file<br />
+7: Failed to write file<br />
+8: Failed to copy file<br />
+9: It's a regular file, not a directory<br />
+10: It's a directory, not a regular file<br />
+11: Directory doesn't exist<br />
+12: File doesn't exist<br />
+13: Failed to copy file: Target file already exists<br />
+14: Invalid Content-Type<br />
+15: Invalid Content-Disposition<br />
+99: Invalid syntax<br />
+
 ## Details
 1. The string comparision has to be done in a different way, because string converted from the byte array of client/server is in UTF-8 format, but the Java declared string attributes are in UTF-16 format, which means string.equals() or string.compareTo() don't work in this case. Instead, we compare each character of strings by using string.charAt(). The method compareStringsWithChar(String string1, String string2) in httpcServer class implemented this feature.
 2. Extra space characters may occur in the JSON string of the command line, which affect the string splitting of syntax parsing. To solve this problem, we preprocess the command line by removing unnecessary space characters. The method preprocessCommandLine(String commandLineString) in httpcServer class implemented this feature.
