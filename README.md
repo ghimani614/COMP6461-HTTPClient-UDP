@@ -46,36 +46,37 @@ Normally, response code starts with 3 indicates redirection, for example: 301(Mo
 ## Examples
 All the available command lines are listed here.
 
-Helper
-1. httpc help
-2. httpc help get
-3. httpc help post
+Client
+1. GET /<br />
+httpfs get http://localhost:8080/workingDirectoryAbsolutePath
+2. GET /foo<br />
+httpfs get http://localhost:8080/workingDirectoryAbsolutePath/foo.txt
+3. POST /bar -d inline-data overwrite=true/false<br />
+httpfs post http://localhost:8080/workingDirectoryAbsolutePath/bar.txt -d 'network' overwrite=true/false
+4. GET /foo Content-Type:type/subtype<br />
+httpfs get http://localhost:8080/workingDirectoryAbsolutePath/foo Content-Type:text/plain 
+5. GET /foo Content-Disposition:inline/attachment<br />
+httpfs get http://localhost:8080/workingDirectoryAbsolutePath/foo.txt Content-Disposition:inline<br />
+httpfs get http://localhost:8080/workingDirectoryAbsolutePath/foo.txt Content-Disposition:attachment
+6. GET /foo Content-Type:type/subtype Content-Disposition<br />
+httpfs get http://localhost:8080/workingDirectoryAbsolutePath/foo Content-Type:text/plain Content-Disposition:inline<br />
+httpfs get http://localhost:8080/workingDirectoryAbsolutePath/foo Content-Type:text/plain Content-Disposition:attachment
 
-GET
-1. httpc get url<br />
-httpc get 'http://httpbin.org/get?course=networking&assignment=1'
-2. httpc get -v url<br />
-httpc get -v 'http://httpbin.org/get?course=networking&assignment=1'
-3. httpc get -h key:value url<br />
-httpc get -h key1:value1 key2:value2 'http://httpbin.org/get?course=networking&assignment=1'
-
-POST
-1. httpc post url<br />
-httpc post 'http://httpbin.org/post'
-2. httpc post -h key:value url<br />
-httpc post -h key1:value1 key2:value2 'http://httpbin.org/post'
-3. httpc post -h key:value -d "inline data" url<br />
-httpc post -h key1:value1 key2:value2 -d '{"Assignment": 1}' 'http://httpbin.org/post'
-4. httpc post -h key:value -f "file name" url<br />
-httpc post -h key1:value1 key2:value2 -f Data.json 'http://httpbin.org/post'
-5. httpc post -v url<br />
-httpc post -v 'http://httpbin.org/post'
-6. httpc post -v -h key:value url<br />
-httpc post -v -h key1:value1 key2:value2 'http://httpbin.org/post'
-7. httpc post -v -h key:value -d "inline data" url<br />
-httpc post -v -h key1:value1 key2:value2 -d '{"Assignment": 1}' 'http://httpbin.org/post'
-8. httpc post -v -h key:value -f "file name" url<br />
-httpc post -v -h key1:value1 key2:value2 -f Data.json 'http://httpbin.org/post'
+Server
+1. httpfs [-v]<br />
+httpfs -v
+2. httpfs [-v] [-p PORT]<br />
+httpfs -v -p 8080
+3. httpfs [-v] [-d PATH-TO-DIR]<br />
+httpfs -v -d workingDirectoryAbsolutePath
+4. httpfs [-v] [-p PORT] [-d PATH-TO-DIR]<br />
+httpfs -v -p 8080 -d workingDirectoryAbsolutePath
+5. httpfs [-p PORT]<br />
+httpfs -p 8080
+6. httpfs [-d PATH-TO-DIR]<br />
+httpfs -d workingDirectoryAbsolutePath
+7. httpfs [-p PORT] [-d PATH-TO-DIR]<br />
+httpfs -p 8080 -d workingDirectoryAbsolutePath
 
 
 ## Status Codes
