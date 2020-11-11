@@ -634,7 +634,7 @@ public class MultiplexServer {
             // Check the starting word, must start with httpfs
 
             if (commandLineStringArray[0].compareTo("httpfs") != 0) {
-                return "Invalid syntax";
+                return "99: Invalid syntax";
             } else {
                 if (commandLineStringArray.length >= 2) {
                     if (commandLineStringArray.length == 3) {
@@ -660,33 +660,36 @@ public class MultiplexServer {
 
                                     if (!isAFile) {
                                         // GET /
+                                        if (checkSecureAccess(filePath) != 0)
+                                            return "5: Access restricted";
+
                                         int statusCode = fileSystem.listAllFiles(filePath);
 
                                         if (statusCode == 0)
                                             return fileSystem.fileContentString;
-                                        else if (statusCode == 9)
-                                            return "Target directory doesn't exist";
+                                        else if (statusCode == 11)
+                                            return statusCode + ": Directory doesn't exist";
                                     } else {
                                         // GET /foo
                                         if (checkSecureAccess(filePath) != 0)
-                                            return "Access restricted";
+                                            return "5: Access restricted";
 
                                         if (fileSystem.directoryExists(filePath)) {
                                             int statusCode = fileSystem.readFile(filePath);
 
                                             if (statusCode == 0)
                                                 return fileSystem.fileContentString;
-                                            else if (statusCode == 8)
-                                                return "It's a directory, not a regular file";
                                             else if (statusCode == 10)
-                                                return "Target file doesn't exist";
+                                                return statusCode + ": It's a directory, not a regular file";
+                                            else if (statusCode == 12)
+                                                return statusCode + ": File doesn't exist";
                                         } else {
-                                            return "Target file doesn't exist";
+                                            return "12: File doesn't exist";
                                         }
                                     }
                                 }
                             } else {
-                                return "Incorrect request URL";
+                                return "3: Incorrect request URL";
                             }
                         }
                     } else if (commandLineStringArray.length == 4) {
@@ -703,7 +706,7 @@ public class MultiplexServer {
                                         if (numberOfSlashes == 0)
                                             numberOfSlashes += 1;
                                         else if (numberOfSlashes >= 1)
-                                            return "Invalid syntax";
+                                            return "99: Invalid syntax";
                                     }
                                 }
 
@@ -726,20 +729,20 @@ public class MultiplexServer {
                                 String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]) + formatString;
 
                                 if (checkSecureAccess(filePath) != 0)
-                                    return "Access restricted";
+                                    return "5: Access restricted";
 
                                 if (fileSystem.directoryExists(filePath)) {
                                     int statusCode = fileSystem.readFile(filePath);
 
                                     if (statusCode == 0) {
                                         return fileSystem.fileContentString;
-                                    } else if (statusCode == 8) {
-                                        return "It's a directory, not a regular file";
                                     } else if (statusCode == 10) {
-                                        return "Target file doesn't exist";
+                                        return statusCode + ": It's a directory, not a regular file";
+                                    } else if (statusCode == 12) {
+                                        return statusCode + ": File doesn't exist";
                                     }
                                 } else {
-                                    return "Target file doesn't exist";
+                                    return "12: File doesn't exist";
                                 }
                             } else if (compareStringsWithChar("Content-Disposition", fourthTermStringArray[0])) {
                                 // GET /foo Content-Disposition:inline/attachment
@@ -748,24 +751,24 @@ public class MultiplexServer {
 
                                 if (compareStringsWithChar("inline", fourthTermStringArray[1])) {
                                     if (checkSecureAccess(filePath) != 0)
-                                        return "Access restricted";
+                                        return "5: Access restricted";
 
                                     if (fileSystem.directoryExists(filePath)) {
                                         int statusCode = fileSystem.readFile(filePath);
 
                                         if (statusCode == 0) {
                                             return fileSystem.fileContentString;
-                                        } else if (statusCode == 8) {
-                                            return "It's a directory, not a regular file";
                                         } else if (statusCode == 10) {
-                                            return "Target file doesn't exist";
+                                            return statusCode + ": It's a directory, not a regular file";
+                                        } else if (statusCode == 12) {
+                                            return statusCode + ": File doesn't exist";
                                         }
                                     } else {
-                                        return "Target file doesn't exist";
+                                        return "12: File doesn't exist";
                                     }
                                 } else if (compareStringsWithChar("attachment", fourthTermStringArray[1])) {
                                     if (checkSecureAccess(filePath) != 0)
-                                        return "Access restricted";
+                                        return "5: Access restricted";
 
                                     String fileName = "";
 
@@ -797,24 +800,24 @@ public class MultiplexServer {
                                         int statusCode = fileSystem.copyFile(filePath, FileSystem.rootDirectoryAbsolutePath + "/download", fileName, fileFormat);
 
                                         if (statusCode == 0)
-                                            return "File downloaded successfully";
-                                        else if (statusCode == 5)
-                                            return "Failed to write file";
-                                        else if (statusCode == 9)
-                                            return "Target file doesn't exist";
-                                        else if (statusCode == 11)
-                                            return "Failed to copy file: Target file already exists";
+                                            return statusCode + ": File downloaded successfully";
+                                        else if (statusCode == 8)
+                                            return statusCode + ": Failed to copy file";
+                                        else if (statusCode == 12)
+                                            return statusCode + ": File doesn't exist";
+                                        else if (statusCode == 13)
+                                            return statusCode + ": Failed to copy file: Target file already exists";
                                         else
-                                            return "Invalid syntax";
+                                            return "99: Invalid syntax";
                                     } else {
-                                        return "Target file doesn't exist";
+                                        return "12: File doesn't exist";
                                     }
                                 } else {
-                                    return "Invalid Content-Disposition";
+                                    return "15: Invalid Content-Disposition";
                                 }
                             }
                         } else {
-                            return "Incorrect request URL";
+                            return "3: Incorrect request URL";
                         }
                     } else if (commandLineStringArray.length == 5) {
                         if (compareStringsWithChar("get", commandLineStringArray[1])) {
@@ -859,7 +862,7 @@ public class MultiplexServer {
                                         }
 
                                         if (checkSecureAccess(filePath) != 0)
-                                            return "Access restricted";
+                                            return "5: Access restricted";
 
                                         int statusCode = 0;
 
@@ -869,33 +872,33 @@ public class MultiplexServer {
 
                                                 if (statusCode == 0)
                                                     return fileSystem.fileContentString;
-                                                else if (statusCode == 10)
-                                                    return "Target file doesn't exist";
+                                                else if (statusCode == 12)
+                                                    return statusCode + ": File doesn't exist";
                                             } else if (compareStringsWithChar("attachment", fifthTermStringArray[1])) {
                                                 statusCode = fileSystem.copyFile(filePath, FileSystem.rootDirectoryAbsolutePath + "/download", fileName, formatString);
 
                                                 if (statusCode == 0)
-                                                    return "File downloaded successfully";
-                                                else if (statusCode == 5)
-                                                    return "Failed to write file";
-                                                else if (statusCode == 9)
-                                                    return "Target directory doesn't exist";
-                                                else if (statusCode == 11)
-                                                    return "Failed to copy file: Target file already exists";
+                                                    return "0: File downloaded successfully";
+                                                else if (statusCode == 8)
+                                                    return statusCode + ": Failed to copy file";
+                                                else if (statusCode == 12)
+                                                    return statusCode + ": File doesn't exist";
+                                                else if (statusCode == 13)
+                                                    return statusCode + ": Failed to copy file: Target file already exists";
                                                 else
-                                                    return "Invalid syntax";
+                                                    return "99: Invalid syntax";
                                             } else {
-                                                return "Invalid Content-Disposition";
+                                                return "15: Invalid Content-Disposition";
                                             }
                                         }
                                     } else {
-                                        return "Invalid Content-Disposition";
+                                        return "15: Invalid Content-Disposition";
                                     }
                                 } else {
-                                    return "Invalid Invalid Content-Type";
+                                    return "14: Invalid Content-Type";
                                 }
                             } else {
-                                return "Incorrect request URL";
+                                return "3: Incorrect request URL";
                             }
                         }
                     } else if (commandLineStringArray.length == 6) {
@@ -909,7 +912,7 @@ public class MultiplexServer {
                                         String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]);
 
                                         if (checkSecureAccess(filePath) != 0)
-                                            return "Access restricted";
+                                            return "5: Access restricted";
 
                                         String fileName = "";
 
@@ -943,39 +946,39 @@ public class MultiplexServer {
                                         boolean overwrite = false;
 
                                         if (overwriteStringArray.length != 2)
-                                            return "Invalid syntax";
+                                            return "99: Invalid syntax";
 
                                         if (compareStringsWithChar("true", overwriteStringArray[1]))
                                             overwrite = true;
                                         else if (compareStringsWithChar("false", overwriteStringArray[1]))
                                             overwrite = false;
                                         else
-                                            return "Invalid syntax";
+                                            return "99: Invalid syntax";
 
                                         // Remove apostrophes
                                         if ((commandLineStringArray[4].charAt(0) == 39 & commandLineStringArray[4].charAt(commandLineStringArray[4].length() - 1) == 39) | (commandLineStringArray[4].charAt(0) == 8216 & commandLineStringArray[4].charAt(commandLineStringArray[4].length() - 1) == 8217))
                                             commandLineStringArray[4] = commandLineStringArray[4].substring(1, commandLineStringArray[4].length() - 1);
                                         else
-                                            return "Invalid syntax";
+                                            return "99: Invalid syntax";
 
                                         if (fileSystem.directoryExists(filePath)) {
                                             int statusCode = fileSystem.writeFile(filePath, fileName, fileFormat, commandLineStringArray[4], overwrite);
 
                                             if (statusCode == 0) {
-                                                return "File written successfully";
-                                            } else if (statusCode == 5) {
-                                                return "Failed to create file";
-                                            } else if (statusCode == 9) {
-                                                return "Target file doesn't exist";
+                                                return statusCode + ": File written successfully";
+                                            } else if (statusCode == 7) {
+                                                return statusCode + ": Failed to write file";
+                                            } else if (statusCode == 11) {
+                                                return statusCode + "Directory doesn't exist";
                                             }
                                         } else {
-                                            return "Target file doesn't exist";
+                                            return "11: Directory doesn't exist";
                                         }
                                     } else {
-                                        return "Incorrect request URL";
+                                        return "3: Incorrect request URL";
                                     }
                                 } else {
-                                    return "Incorrect request URL";
+                                    return "3: Incorrect request URL";
                                 }
                             }
                         }
@@ -984,7 +987,7 @@ public class MultiplexServer {
             }
         }
 
-        return "Invalid syntax";
+        return "99: Invalid syntax";
     }
 
     public String parseServerCommandLine(String commandLineString) {
@@ -1000,7 +1003,7 @@ public class MultiplexServer {
             // Check the starting word, must start with httpfs
 
             if (commandLineStringArray[0].compareTo("httpfs") != 0) {
-                return "Invalid syntax";
+                return "99: Invalid syntax";
             } else {
                 String debuggingMessages = "";
 
@@ -1008,9 +1011,9 @@ public class MultiplexServer {
                     if (!serverStarted) {
                         serverThread.confirmedToRunServer = true;
 
-                        return "Server is running";
+                        return "1: Server is running";
                     } else {
-                        return "Server is running already";
+                        return "2: Server is running already";
                     }
                 } else if (commandLineStringArray.length == 2) {
                     if (compareStringsWithChar("-v", commandLineStringArray[1])) {
@@ -1020,11 +1023,11 @@ public class MultiplexServer {
 
                             debuggingMessages = getDebuggingMessages();
 
-                            return "Server is running\n\n" + debuggingMessages;
+                            return "1: Server is running\n\n" + debuggingMessages;
                         } else {
                             debuggingMessages = getDebuggingMessages();
 
-                            return "Server is running already\n\n" + debuggingMessages;
+                            return "2: Server is running already\n\n" + debuggingMessages;
                         }
                     }
                 } else if (commandLineStringArray.length == 3) {
@@ -1035,16 +1038,16 @@ public class MultiplexServer {
                         String changingPortResponseString = "";
 
                         if (statusCode == 0)
-                            changingPortResponseString = "Port number changed";
+                            changingPortResponseString = "0: Port number changed";
                         else
-                            changingPortResponseString = "Not allowed to change port number after server establishment";
+                            changingPortResponseString = "4: Not allowed to change port number after server establishment";
 
                         if (!serverStarted) {
                             serverThread.confirmedToRunServer = true;
 
-                            return "Server is running\n\n" + changingPortResponseString;
+                            return "1: Server is running\n\n" + changingPortResponseString;
                         } else {
-                            return "Server is running already\n\n" + changingPortResponseString;
+                            return "2: Server is running already\n\n" + changingPortResponseString;
                         }
                     } else if (compareStringsWithChar("-d", commandLineStringArray[1])) {
                         // httpfs -d PATH-TO-DIR
@@ -1053,16 +1056,16 @@ public class MultiplexServer {
                         String changingWorkingDirectoryResponseString = "";
 
                         if (statusCode == 0)
-                            changingWorkingDirectoryResponseString = "Working directory changed";
+                            changingWorkingDirectoryResponseString = "0: Working directory changed";
                         else
-                            changingWorkingDirectoryResponseString = "Working directory doesn't exist";
+                            changingWorkingDirectoryResponseString = "11: Working directory doesn't exist";
 
                         if (!serverStarted) {
                             serverThread.confirmedToRunServer = true;
 
-                            return "Server is running\n\n" + changingWorkingDirectoryResponseString;
+                            return "1: Server is running\n\n" + changingWorkingDirectoryResponseString;
                         } else {
-                            return "Server is running already\n\n" + changingWorkingDirectoryResponseString;
+                            return "2: Server is running already\n\n" + changingWorkingDirectoryResponseString;
                         }
                     }
                 } else if (commandLineStringArray.length == 4) {
@@ -1074,18 +1077,18 @@ public class MultiplexServer {
                             String changingPortResponseString = "";
 
                             if (statusCode == 0)
-                                changingPortResponseString = "Port number changed";
+                                changingPortResponseString = "0: Port number changed";
                             else
-                                changingPortResponseString = "Not allowed to change port number after server establishment";
+                                changingPortResponseString = "4: Not allowed to change port number after server establishment";
 
                             debuggingMessages = getDebuggingMessages();
 
                             if (!serverStarted) {
                                 serverThread.confirmedToRunServer = true;
 
-                                return "Server is running\n\n" + debuggingMessages + "\n\n" + changingPortResponseString;
+                                return "1: Server is running\n\n" + debuggingMessages + "\n\n" + changingPortResponseString;
                             } else {
-                                return "Server is running already\n\n" + debuggingMessages + "\n\n" + changingPortResponseString;
+                                return "2: Server is running already\n\n" + debuggingMessages + "\n\n" + changingPortResponseString;
                             }
                         } else if (compareStringsWithChar("-p", commandLineStringArray[2])) {
                             // httpfs -v -d PATH-TO-DIR
@@ -1094,18 +1097,18 @@ public class MultiplexServer {
                             String changingWorkingDirectoryResponseString = "";
 
                             if (statusCode == 0)
-                                changingWorkingDirectoryResponseString = "Working directory changed";
+                                changingWorkingDirectoryResponseString = "0: Working directory changed";
                             else
-                                changingWorkingDirectoryResponseString = "Working directory doesn't exist";
+                                changingWorkingDirectoryResponseString = "11: Working directory doesn't exist";
 
                             debuggingMessages = getDebuggingMessages();
 
                             if (!serverStarted) {
                                 serverThread.confirmedToRunServer = true;
 
-                                return "Server is running\n\n" + debuggingMessages + "\n\n" + changingWorkingDirectoryResponseString;
+                                return "1: Server is running\n\n" + debuggingMessages + "\n\n" + changingWorkingDirectoryResponseString;
                             } else {
-                                return "Server is running already\n\n" + debuggingMessages + "\n\n" + changingWorkingDirectoryResponseString;
+                                return "2: Server is running already\n\n" + debuggingMessages + "\n\n" + changingWorkingDirectoryResponseString;
                             }
                         }
                     }
@@ -1119,9 +1122,9 @@ public class MultiplexServer {
                             String changingPortResponseString = "";
 
                             if (statusCode == 0)
-                                changingPortResponseString = "Port number changed";
+                                changingPortResponseString = "0: Port number changed";
                             else
-                                changingPortResponseString = "Not allowed to change port number after server establishment";
+                                changingPortResponseString = "4: Not allowed to change port number after server establishment";
 
 
                             statusCode = setWorkingDirectory(commandLineStringArray[5]);
@@ -1129,16 +1132,16 @@ public class MultiplexServer {
                             String changingWorkingDirectoryResponseString = "";
 
                             if (statusCode == 0)
-                                changingWorkingDirectoryResponseString = "Working directory changed";
+                                changingWorkingDirectoryResponseString = "0: Working directory changed";
                             else
-                                changingWorkingDirectoryResponseString = "Working directory doesn't exist";
+                                changingWorkingDirectoryResponseString = "11: Working directory doesn't exist";
 
                             if (!serverStarted) {
                                 serverThread.confirmedToRunServer = true;
 
-                                return "Server is running\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
+                                return "1: Server is running\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
                             } else {
-                                return "Server is running already\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
+                                return "2: Server is running already\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
                             }
                         }
                     }
@@ -1153,9 +1156,9 @@ public class MultiplexServer {
                                 String changingPortResponseString = "";
 
                                 if (statusCode == 0)
-                                    changingPortResponseString = "Port number changed";
+                                    changingPortResponseString = "0: Port number changed";
                                 else
-                                    changingPortResponseString = "Not allowed to change port number after server establishment";
+                                    changingPortResponseString = "4: Not allowed to change port number after server establishment";
 
 
                                 statusCode = setWorkingDirectory(commandLineStringArray[5]);
@@ -1163,18 +1166,18 @@ public class MultiplexServer {
                                 String changingWorkingDirectoryResponseString = "";
 
                                 if (statusCode == 0)
-                                    changingWorkingDirectoryResponseString = "Working directory changed";
+                                    changingWorkingDirectoryResponseString = "0: Working directory changed";
                                 else
-                                    changingWorkingDirectoryResponseString = "Working directory doesn't exist";
+                                    changingWorkingDirectoryResponseString = "11: Working directory doesn't exist";
 
                                 debuggingMessages = getDebuggingMessages();
 
                                 if (!serverStarted) {
                                     serverThread.confirmedToRunServer = true;
 
-                                    return "Server is running\n\n" + debuggingMessages + "\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
+                                    return "1: Server is running\n\n" + debuggingMessages + "\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
                                 } else {
-                                    return "Server is running already\n\n" + debuggingMessages + "\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
+                                    return "2: Server is running already\n\n" + debuggingMessages + "\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
                                 }
                             }
                         }
@@ -1183,7 +1186,7 @@ public class MultiplexServer {
             }
         }
 
-        return "Invalid syntax";
+        return "99: Invalid syntax";
     }
 
     private String preprocessCommandLine(String commandLineString) {
