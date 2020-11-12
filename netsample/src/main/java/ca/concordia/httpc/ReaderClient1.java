@@ -24,7 +24,7 @@ public class ReaderClient1 {
         Charset utf8 = StandardCharsets.UTF_8;
 
         while (true) {
-            String line = "R1";
+            String line = "httpfs get http://localhost:8080//Users/hongyushen/Documents/IntelliJProject/COMP6461-httpServerApplication/working-directory1/foo.txt";
             ByteBuffer buf = ByteBuffer.allocate(2048);
 
             int n = socket.write(ByteBuffer.wrap(line.getBytes(StandardCharsets.UTF_8)));
@@ -53,7 +53,7 @@ public class ReaderClient1 {
 
         parser.acceptsAll(asList("port", "p"), "EchoServer listening port")
                 .withOptionalArg()
-                .defaultsTo("8010");
+                .defaultsTo("8080");
 
         OptionSet opts = parser.parse(args);
 

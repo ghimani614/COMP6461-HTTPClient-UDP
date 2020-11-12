@@ -71,7 +71,7 @@ public class MultiplexServer {
                 }
 
                 String requestString = new String(buffer.array(), StandardCharsets.UTF_8);
-                System.out.println("Client request: " + requestString);
+                System.out.println("Client " + client.getRemoteAddress() + " request: " + requestString);
 
                 // Reset and empty the buffer
                 buffer.clear();
@@ -81,21 +81,7 @@ public class MultiplexServer {
 
                 String responseString = "";
 
-                if (compareStringsWithChar("R1", requestString)) {
-                    read(1);
-                    responseString = "Reading result";
-                } else if (compareStringsWithChar("R2", requestString)) {
-                    read(2);
-                    responseString = "Reading result";
-                } else if (compareStringsWithChar("W1", requestString)) {
-                    write(1);
-                    responseString = "Writing result";
-                } else if (compareStringsWithChar("W2", requestString)) {
-                    write(2);
-                    responseString = "Writing result";
-                } else {
-                    responseString = parseHttpfsClientCommandLine(requestString);
-                }
+                responseString = parseHttpfsClientCommandLine(requestString);
 
                 // ByteBuffer is tricky, you have to flip when switch from read to write, or vice-versa
                 buffer.flip();
