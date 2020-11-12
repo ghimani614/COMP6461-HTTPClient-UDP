@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import static java.util.Arrays.asList;
 
 public class WriterClient1 {
+    private static String URL = "http://localhost:8080/" + FileSystem.rootDirectoryAbsolutePath + "/working-directory1/foo.txt";
 
     // readFully reads until the request is fulfilled or the socket is closed
     private static void readFully(SocketChannel socket, ByteBuffer buf, int size) throws IOException {
@@ -24,7 +25,7 @@ public class WriterClient1 {
         Charset utf8 = StandardCharsets.UTF_8;
 
         while (true) {
-            String line = "httpfs post http://localhost:8080//Users/hongyushen/Documents/IntelliJProject/COMP6461-httpServerApplication/working-directory1/foo.txt -d ‘network!!!!’ overwrite=true";
+            String line = "httpfs post " + URL + " -d ‘network!!!!’ overwrite=true";
             ByteBuffer buf = ByteBuffer.allocate(2048);
 
             int n = socket.write(ByteBuffer.wrap(line.getBytes(StandardCharsets.UTF_8)));

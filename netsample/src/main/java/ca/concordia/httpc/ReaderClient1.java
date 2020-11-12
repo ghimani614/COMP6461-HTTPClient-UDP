@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
@@ -14,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import static java.util.Arrays.asList;
 
 public class ReaderClient1 {
+    private static String URL = "http://localhost:8080/" + FileSystem.rootDirectoryAbsolutePath + "/working-directory1/foo.txt";
 
     // readFully reads until the request is fulfilled or the socket is closed
     private static void readFully(SocketChannel socket, ByteBuffer buf, int size) throws IOException {
@@ -24,7 +26,7 @@ public class ReaderClient1 {
         Charset utf8 = StandardCharsets.UTF_8;
 
         while (true) {
-            String line = "httpfs get http://localhost:8080//Users/hongyushen/Documents/IntelliJProject/COMP6461-httpServerApplication/working-directory1/foo.txt";
+            String line = "httpfs get " + URL;
             ByteBuffer buf = ByteBuffer.allocate(2048);
 
             int n = socket.write(ByteBuffer.wrap(line.getBytes(StandardCharsets.UTF_8)));
