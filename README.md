@@ -12,39 +12,44 @@ Third-party libraries:
 
 
 ## Configuration
-Use Intellij IDE to open the project, navigate to netsample/src/main/java/ca/concordia/httpc, there are httpcServer class and httpc class. Before running the program, make sure json-simple-1.1.jar is added to dependency. It is already added by default, if it is not, right click netsample/lib folder and select "Add as Library" option in Intellij. The server should be run before the client, so right click httpcServer class and select "Run 'httpcServer.main()'" in the project view, then use the same way to run httpc.
+Use Intellij IDE to open the project, navigate to netsample/src/main/java/ca/concordia/httpc, there are MultiplexServer class and httpc class. Before running the program, make sure json-simple-1.1.jar is added to dependency. It is already added by default, if it is not, right click netsample/lib folder and select "Add as Library" option in Intellij.
 
+
+## Execution
+1. Run MultiplexServer.java
+2. Run ServerCommand.java, and enter one of the server commands from the example below to run the server
+3. Run httpc.java, enter the port number that matches the server
+4. Try any client commands from the example below to see the result
+
+To reproduce Optional Task(Bonus Marks) of Multi-Requests Support, follow step 1 and 2 above, after that selectively run ReaderClient1, ReaderClient2, WriterClient1 or WriterClient2 depending on the situation you want to reproduce.
+
+1. Two clients are writing to the same file: Run WriterClient1 and WriterClient2
+2. One client is reading, while another is writing to the same file: Run ReaderClient1 or ReaderClient2 and WriterClient1 or WriterClient2<br />
+3. Two clients are reading the same file: Run ReaderClient1 and ReaderClient2
 
 ## Implementation
 Rules:
-1. All reserved command keywords are case sensitive, but JSON data and URLs are not.
-2. It is not allowed to have multiple space characters between each term, like "httpc  help   get ". Starting with space is invalid, it must starts with "httpc" without any exception.
-3. URL has to be wrapped by a pair of apostrophes, like 'http://httpbin.org/post'.
-4. This program has assumed Content-Type to be application/json in any POST operation, changing Content-Type using POST command has no effect.
-
+1. All reserved command keywords are case-sensitive, but JSON data and URLs are not.
+2. It is not allowed to have multiple space characters between each term, like "httpfs  &nbsp; get    &nbsp;". Starting with space is invalid, it must starts with "httpfs" without any exception.
+3. The port number in URL should match the one that is currently used, otherwise it will cause errors. If port 9000 is being used, the URL should start with http://localhost:9000/
+4. Only files with postfix are considered as valid, like Abc.txt or 123.html. Counterexamples: Abc or 123.
+5. Currently the entire file path, file name and content to be written in POST command are not allowed to have space characters.
 
 Syntax parser
 
-We used string manipulation to parse the command line. The entire string will be broken into several chunks, and syntactic correctness will be verified by comparing the content of each chunk. The method parseCommandLine(String commandLineString) in httpcServer class implemented this feature.
+We used string manipulation to parse the command line. The entire string will be broken into several chunks, and syntactic correctness will be verified by comparing the content of each chunk. The method parseHttpfsClientCommandLine(String commandLineString) and parseServerCommandLine(String commandLineString) in MultiplexServer class implemented this feature.
 
 
-GET and POST
+File system
 
-We used Java 11 HttpURLConnection to implement the functionalities of GET and POST. The method getHttpResponse(String urlString) and postHttpResponse(String urlString, HashMap<String, String> headerKeyValuePairHashMap, String jsonData) in httpcServer class implemented corresponding features.
+We used Java NIO2 APIs to implement the file reading/writing/copying.
 
+Multi-Requests Support
 
-Verbose option
-
-We used Java URLConnection to implement it. It is able to get header values by calling connection.getHeaderField(keyString). The method getHeaderValueByKey(String urlString, String keyString) in httpcServer class implemented this feature.
-
-
-Redirection
-
-Normally, response code starts with 3 indicates redirection, for example: 301(Moved Permanently), 302(Temporary Redirect). Before executing the command, the target URL will be detected if it redirects or not, if yes, obtain the directed URL by calling connection.getHeaderField("Location"). The attribute maximumRedirectionTimes defines the limit of redirection times in order to prevent infinite loop, default value is 5. The method detectRedirection(String urlString) in httpcServer class implemented this feature.
-
+It is a classic readers-writers problem. Multiple readers can read simultaneously, but only one writer is allowed to write at a time. In this assignment, we used I/O multiplexing model to make it possible to perform I/O operations on multiple descriptors in one thread. To guarantee the data consistency, we used synchronized keyword to make sure a file is edited by at most one process at the same time. 
 
 ## Examples
-All the available command lines are listed here.
+All the available command lines are listed here. You should replace workingDirectoryAbsolutePath with the actual path on your computer.
 
 Client
 1. GET /<br />
@@ -100,11 +105,8 @@ httpfs -p 8080 -d workingDirectoryAbsolutePath
 99: Invalid syntax<br />
 
 ## Details
-1. The string comparision has to be done in a different way, because string converted from the byte array of client/server is in UTF-8 format, but the Java declared string attributes are in UTF-16 format, which means string.equals() or string.compareTo() don't work in this case. Instead, we compare each character of strings by using string.charAt(). The method compareStringsWithChar(String string1, String string2) in httpcServer class implemented this feature.
-2. Extra space characters may occur in the JSON string of the command line, which affect the string splitting of syntax parsing. To solve this problem, we preprocess the command line by removing unnecessary space characters. The method preprocessCommandLine(String commandLineString) in httpcServer class implemented this feature.
-3. All the key value pairs are stored in a HashMap<String, String> structure when using -h option. In the postHttpResponse method it will loop through the HashMap to set all properties.
-4. We assume all the files to be read/written are located in the root folder.
-5. On macOS, if user gives the txt file an empty name using command: "httpc -v 'http://httpbin.org/get?course=networking&assignment=1' -o .txt", the output txt file may become a hidden file. It is necessary to press shift + command + . to show and access hidden files. 
+1. The string comparision has to be done in a different way, because string converted from the byte array of client/server is in UTF-8 format, but the Java declared string attributes are in UTF-16 format, which means string.equals() or string.compareTo() don't work in this case. Instead, we compare each character of strings by using string.charAt(). The method compareStringsWithChar(String string1, String string2) in MultiplexServer class implemented this feature.
+2. Extra space characters may occur in the JSON string of the command line, which affect the string splitting of syntax parsing. To solve this problem, we preprocess the command line by removing unnecessary space characters. The method preprocessCommandLine(String commandLineString) in MultiplexServer class implemented this feature.
 
 
 ## References
@@ -113,5 +115,6 @@ httpfs -p 8080 -d workingDirectoryAbsolutePath
 2. https://www.tutorialspoint.com/json_simple/json_simple_quick_guide.htm
 3. https://stackoverflow.com/questions/20806617/retrieve-the-final-location-of-a-given-url-in-java
 4. https://www.codota.com/code/java/methods/java.net.URLConnection/getHeaderField
-5. https://medium.com/@liakh.aliaksandr/java-sockets-i-o-blocking-non-blocking-and-asynchronous-fb7f066e4ede
-6. https://wiki.eecs.yorku.ca/course_archive/2007-08/F/6490A/readers-writers
+5. https://www.baeldung.com/java-nio-2-file-api
+6. https://medium.com/@liakh.aliaksandr/java-sockets-i-o-blocking-non-blocking-and-asynchronous-fb7f066e4ede
+7. https://wiki.eecs.yorku.ca/course_archive/2007-08/F/6490A/readers-writers

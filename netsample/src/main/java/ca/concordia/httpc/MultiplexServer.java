@@ -1487,40 +1487,6 @@ public class MultiplexServer {
         return 0;
     }
 
-    private void read(int readerId) {
-        synchronized (this) {
-            numberOfReaders++;
-            System.out.println("Reader " + readerId + " starts reading.");
-        }
-
-        System.out.println("Reader " + readerId + " is now reading.");
-
-        synchronized (this) {
-            System.out.println("Reader " + readerId + " stops reading.");
-
-            numberOfReaders--;
-
-            if (numberOfReaders == 0)
-                this.notifyAll();
-        }
-    }
-
-    private synchronized void write(int writerId) {
-        while (numberOfReaders != 0) {
-            try {
-                this.wait();
-            } catch (InterruptedException e) {
-
-            }
-        }
-
-        System.out.println("Writer " + writerId + " starts writing.");
-
-        System.out.println("Writer " + writerId + " stops writing.");
-
-        this.notifyAll();
-    }
-
     private void newClient(ServerSocketChannel server, Selector selector) {
         try {
             SocketChannel client = server.accept();
