@@ -46,7 +46,7 @@ We used Java NIO2 APIs to implement the file reading/writing/copying.
 
 Multi-Requests Support
 
-It is a classic readers-writers problem. Multiple readers can read simultaneously, but only one writer is allowed to write at a time. In this assignment, we used I/O multiplexing model to make it possible to perform I/O operations on multiple descriptors in one thread. To guarantee the data consistency, we used synchronized keyword to make sure a file is edited by at most one process at the same time. 
+It is a classic readers-writers problem. Multiple readers can read simultaneously, but only one writer is allowed to write at a time. In this assignment, we used I/O multiplexing model to make it possible to perform I/O operations on multiple descriptors in one thread.
 
 ## Examples
 All the available command lines are listed here. You should replace workingDirectoryAbsolutePath with the actual path on your computer.
