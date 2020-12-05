@@ -21,15 +21,14 @@ import org.json.simple.*;
 import org.json.simple.parser.*;
 
 public class httpcServer {
-
-    private static final Logger logger = LoggerFactory.getLogger(ca.concordia.echo.BlockingEchoServer.class);
-
     private String currentURL = "";
     private String redirectedURL = "", redirectionResultString = "";
 
     private String verbosityString = "";
 
     private HashMap<String, String> headerKeyValuePairHashMap;
+
+    private static final Logger logger = LoggerFactory.getLogger(ca.concordia.echo.BlockingEchoServer.class);
 
     private void readEchoAndRepeat(SocketChannel socket) {
         try (SocketChannel client = socket) {
@@ -69,7 +68,7 @@ public class httpcServer {
         }
     }
 
-    private String parseCommandLine(String commandLineString) {
+    public String parseCommandLine(String commandLineString) {
         commandLineString = preprocessCommandLine(commandLineString);
 
         String[] commandLineStringArray = commandLineString.split(" ");
@@ -802,20 +801,6 @@ public class httpcServer {
         return true;
     }
 
-    private void listenAndServe(int port) throws IOException {
-        try (ServerSocketChannel server = ServerSocketChannel.open()) {
-            server.bind(new InetSocketAddress(port));
-            logger.info("EchoServer is listening at {}", server.getLocalAddress());
-            for (; ; ) {
-                SocketChannel client = server.accept();
-                logger.info("New client from {}", client.getRemoteAddress());
-                // We may use a custom Executor instead of ForkJoinPool in a real-world
-                // application
-                ForkJoinPool.commonPool().submit(() -> readEchoAndRepeat(client));
-            }
-        }
-    }
-
     private String postHttpResponse(String urlString, HashMap<String, String> headerKeyValuePairHashMap, String jsonData) {
         StringBuilder stringBuilder;
 
@@ -855,6 +840,20 @@ public class httpcServer {
         }
 
         return stringBuilder.toString();
+    }
+
+    private void listenAndServe(int port) throws IOException {
+        try (ServerSocketChannel server = ServerSocketChannel.open()) {
+            server.bind(new InetSocketAddress(port));
+            logger.info("EchoServer is listening at {}", server.getLocalAddress());
+            for (; ; ) {
+                SocketChannel client = server.accept();
+                logger.info("New client from {}", client.getRemoteAddress());
+                // We may use a custom Executor instead of ForkJoinPool in a real-world
+                // application
+                ForkJoinPool.commonPool().submit(() -> readEchoAndRepeat(client));
+            }
+        }
     }
 
     public static void main(String[] args) throws IOException {

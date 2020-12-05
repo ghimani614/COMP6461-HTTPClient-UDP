@@ -19,12 +19,16 @@ import java.util.Set;
 
 import static java.nio.channels.SelectionKey.OP_READ;
 
-public class UDPClient {
+public class UDPWriterClient1 {
+    private static int windowSize = 2;
+
+    private static int timeout = 2000;
+
     private static boolean receivedConnectionRequest = false, receivedCommandRequest = false;
 
-    private static int windowStartIndex = 0, windowEndIndex = Attributes.windowSize - 1;
+    private static int windowStartIndex = 0, windowEndIndex = windowSize - 1;
 
-    private static boolean[] stateArray = new boolean[Attributes.windowSize], acknowledgementArray = new boolean[Attributes.windowSize];
+    private static boolean[] stateArray = new boolean[windowSize], acknowledgementArray = new boolean[windowSize];
 
     private static boolean sentAllPacketsWithinWindow = false;
 
@@ -79,7 +83,6 @@ public class UDPClient {
 
                 totalNumberOfPackets = (int) Math.ceil((double) commandLineByteArray.length / 1013) + 1;
 
-                // Three-way handshake process
                 while (!receivedConnectionRequest | !receivedCommandRequest) {
                     if (!receivedConnectionRequest) {
                         System.out.println("\nSend connection request");
@@ -94,7 +97,7 @@ public class UDPClient {
                     }
 
                     // Start the timer
-                    selector.select(Attributes.timeout);
+                    selector.select(timeout);
 
                     Set<SelectionKey> keys = selector.selectedKeys();
 
@@ -145,7 +148,9 @@ public class UDPClient {
                     keys.clear();
                 }
 
-                // Packet sending process
+//                receivedConnectionRequest = true;
+//                receivedCommandRequest = true;
+
                 if (receivedConnectionRequest & receivedCommandRequest) {
                     // Keep sending packets until all received
                     while (!allPacketsReceived) {
@@ -155,7 +160,7 @@ public class UDPClient {
                             System.out.println("\nSent all packets within the window to server");
 
                         // Start the timer
-                        selector.select(Attributes.timeout);
+                        selector.select(timeout);
 
                         Set<SelectionKey> keys = selector.selectedKeys();
 
@@ -199,7 +204,7 @@ public class UDPClient {
                                     setAcknowledgementArray(sequenceNumber);
 
                                     // Slide the window as much as possible
-                                    for (int indedx = 0; indedx < Attributes.windowSize; indedx++)
+                                    for (int indedx = 0; indedx < windowSize; indedx++)
                                         slideWindow();
 
                                     // Check if all packets have been received
@@ -207,7 +212,7 @@ public class UDPClient {
                                         allPacketsReceived = true;
 
                                         // The window should be completely empty if all packets have been sent
-                                        for (int windowIndex = 0; windowIndex < Attributes.windowSize; windowIndex++) {
+                                        for (int windowIndex = 0; windowIndex < windowSize; windowIndex++) {
                                             if (stateArray[windowIndex] | acknowledgementArray[windowIndex]) {
                                                 allPacketsReceived = false;
                                                 break;
@@ -219,12 +224,12 @@ public class UDPClient {
                                     }
                                 }
 
-                                for (int windowIndex = 0; windowIndex < Attributes.windowSize; windowIndex++)
+                                for (int windowIndex = 0; windowIndex < windowSize; windowIndex++)
                                     System.out.println(stateArray[windowIndex] + " $$");
 
                                 System.out.println("");
 
-                                for (int windowIndex = 0; windowIndex < Attributes.windowSize; windowIndex++)
+                                for (int windowIndex = 0; windowIndex < windowSize; windowIndex++)
                                     System.out.println(acknowledgementArray[windowIndex] + " @@");
                             }
                         }
@@ -241,15 +246,15 @@ public class UDPClient {
     private static void initializeAttributes() {
         windowStartIndex = 0;
 
-        windowEndIndex = Attributes.windowSize - 1;
+        windowEndIndex = windowSize - 1;
 
         receivedConnectionRequest = false;
 
         receivedCommandRequest = false;
 
-        stateArray = new boolean[Attributes.windowSize];
+        stateArray = new boolean[windowSize];
 
-        acknowledgementArray = new boolean[Attributes.windowSize];
+        acknowledgementArray = new boolean[windowSize];
 
         sentAllPacketsWithinWindow = false;
 
@@ -297,24 +302,24 @@ public class UDPClient {
     private static void sendAllPacketsInWindow(DatagramChannel channel, SocketAddress routerAddress, InetSocketAddress serverAddress, boolean resendPacket) throws IOException {
         sentAllPacketsWithinWindow = false;
 
-        for (int windowIndex = 0; windowIndex < Attributes.windowSize; windowIndex++) {
+        for (int windowIndex = 0; windowIndex < windowSize; windowIndex++) {
             if (!stateArray[windowIndex] & !acknowledgementArray[windowIndex]) {
                 int sequenceNumber = windowStartIndex + windowIndex;
 
                 // If sequence number exceeds the double window size, clamp it back to the valid range
-                if (sequenceNumber >= Attributes.windowSize * 2)
-                    sequenceNumber %= Attributes.windowSize;
+                if (sequenceNumber >= windowSize * 2)
+                    sequenceNumber %= windowSize;
 
                 int packetId = 0;
 
                 // Check if the window covers two sequence number sections
                 if (windowEndIndex < windowStartIndex) {
                     if (sequenceNumber > windowEndIndex)
-                        packetId = (n - 1) * Attributes.windowSize * 2 + sequenceNumber;
+                        packetId = (n - 1) * windowSize * 2 + sequenceNumber;
                     else
-                        packetId = n * Attributes.windowSize * 2 + sequenceNumber;
+                        packetId = n * windowSize * 2 + sequenceNumber;
                 } else {
-                    packetId = n * Attributes.windowSize * 2 + sequenceNumber;
+                    packetId = n * windowSize * 2 + sequenceNumber;
                 }
 
                 if (packetId >= totalNumberOfPackets)
@@ -394,7 +399,7 @@ public class UDPClient {
             index = sequenceNumber - windowStartIndex;
             System.out.println(index + " >>>>>>>>> " + sequenceNumber);
         } else {
-            index = Attributes.windowSize - 1 - (windowEndIndex - sequenceNumber);
+            index = windowSize - 1 - (windowEndIndex - sequenceNumber);
             System.out.println(index + " <<<<<<<<<<<<< " + sequenceNumber);
         }
 
@@ -419,9 +424,9 @@ public class UDPClient {
             windowEndIndex += 1;
 
             // If the index reaches the maximum of sequence number, reset it
-            if (windowStartIndex == Attributes.windowSize * 2) {
+            if (windowStartIndex == windowSize * 2) {
                 windowStartIndex = 0;
-            } else if (windowEndIndex == Attributes.windowSize * 2) {
+            } else if (windowEndIndex == windowSize * 2) {
                 windowEndIndex = 0;
 
                 n += 1;
@@ -498,4 +503,3 @@ public class UDPClient {
         runClient(routerAddress, serverAddress);
     }
 }
-

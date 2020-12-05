@@ -81,7 +81,14 @@ public class MultiplexServer {
 
                 String responseString = "";
 
-                responseString = parseHttpfsClientCommandLine(requestString);
+                requestString = requestString.replaceAll("\u0000.*", "");
+
+                if (requestString.substring(0, 5).compareTo("httpc") == 0)
+                    responseString = parseClientCommandLine(requestString);
+                else if (requestString.substring(0, 6).compareTo("httpfs") == 0)
+                    responseString = parseHttpfsClientCommandLine(requestString);
+                else
+                    responseString = "99: Invalid syntax";
 
                 // ByteBuffer is tricky, you have to flip when switch from read to write, or vice-versa
                 buffer.flip();
@@ -93,6 +100,7 @@ public class MultiplexServer {
             logger.error("Failed to receive/send data", e);
         }
     }
+
 
     private String parseClientCommandLine(String commandLineString) {
         commandLineString = preprocessCommandLine(commandLineString);
@@ -606,6 +614,7 @@ public class MultiplexServer {
             return "Invalid syntax";
         }
     }
+
 
     public String parseHttpfsClientCommandLine(String commandLineString) {
         commandLineString = preprocessCommandLine(commandLineString);
