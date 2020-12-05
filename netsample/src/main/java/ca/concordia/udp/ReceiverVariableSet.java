@@ -33,9 +33,9 @@ public class ReceiverVariableSet {
 
         windowEndIndex = Attributes.windowSize - 1;
 
-        receivedConnectionRequest = false;
+//        receivedConnectionRequest = false;
 
-        receivedCommandRequest = false;
+//        receivedCommandRequest = false;
 
         stateArray = new boolean[Attributes.windowSize];
 

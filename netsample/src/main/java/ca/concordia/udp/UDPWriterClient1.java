@@ -20,25 +20,7 @@ import java.util.Set;
 import static java.nio.channels.SelectionKey.OP_READ;
 
 public class UDPWriterClient1 {
-    private static int windowSize = 2;
-
-    private static int timeout = 2000;
-
-    private static boolean receivedConnectionRequest = false, receivedCommandRequest = false;
-
-    private static int windowStartIndex = 0, windowEndIndex = windowSize - 1;
-
-    private static boolean[] stateArray = new boolean[windowSize], acknowledgementArray = new boolean[windowSize];
-
-    private static boolean sentAllPacketsWithinWindow = false;
-
-    private static boolean allPacketsSent = false, allPacketsReceived = false;
-
-    private static int totalNumberOfPackets = 1;
-
-    private static int n = 0;
-
-    private static byte[] commandLineByteArray;
+    private static SenderVariableSet senderVariableSet = new SenderVariableSet();
 
     private static final Logger logger = LoggerFactory.getLogger(UDPClient.class);
 
@@ -57,39 +39,37 @@ public class UDPWriterClient1 {
                 String commandLineString = scanner.nextLine();
 
                 for (int i = 0; i < 1013; i++)
-                    commandLineString += "f";
+                    commandLineString += "b";
 
                 for (int i = 0; i < 1013; i++)
-                    commandLineString += "u";
-
-                for (int i = 0; i < 1013; i++)
-                    commandLineString += "c";
-
-                for (int i = 0; i < 1013; i++)
-                    commandLineString += "k";
+                    commandLineString += "a";
 
                 for (int i = 0; i < 1013; i++)
                     commandLineString += "i";
 
                 for (int i = 0; i < 1013; i++)
-                    commandLineString += "n";
+                    commandLineString += "s";
 
                 for (int i = 0; i < 1013; i++)
-                    commandLineString += "g";
+                    commandLineString += "e";
 
-                commandLineByteArray = commandLineString.getBytes();
+                for (int i = 0; i < 1013; i++)
+                    commandLineString += "r";
 
-                initializeAttributes();
+                senderVariableSet.commandLineByteArray = commandLineString.getBytes();
 
-                totalNumberOfPackets = (int) Math.ceil((double) commandLineByteArray.length / 1013) + 1;
+                senderVariableSet.initializeAttributes();
 
-                while (!receivedConnectionRequest | !receivedCommandRequest) {
-                    if (!receivedConnectionRequest) {
+                senderVariableSet.totalNumberOfPackets = (int) Math.ceil((double) senderVariableSet.commandLineByteArray.length / 1013) + 1;
+
+                // Three-way handshake process
+                while (!senderVariableSet.receivedConnectionRequest | !senderVariableSet.receivedCommandRequest) {
+                    if (!senderVariableSet.receivedConnectionRequest) {
                         System.out.println("\nSend connection request");
 
                         sendConnectionRequest(channel, routerAddress, serverAddress, false);
                     } else {
-                        if (!receivedCommandRequest) {
+                        if (!senderVariableSet.receivedCommandRequest) {
                             System.out.println("\nSend commend request");
 
                             sendCommandRequest(channel, routerAddress, serverAddress, false);
@@ -97,7 +77,7 @@ public class UDPWriterClient1 {
                     }
 
                     // Start the timer
-                    selector.select(timeout);
+                    selector.select(Attributes.timeout);
 
                     Set<SelectionKey> keys = selector.selectedKeys();
 
@@ -105,12 +85,12 @@ public class UDPWriterClient1 {
                     if (keys.isEmpty()) {
                         System.out.println("\nTime out");
 
-                        if (!receivedConnectionRequest) {
+                        if (!senderVariableSet.receivedConnectionRequest) {
                             System.out.println("\nResend connection request");
 
                             sendConnectionRequest(channel, routerAddress, serverAddress, true);
                         } else {
-                            if (!receivedCommandRequest) {
+                            if (!senderVariableSet.receivedCommandRequest) {
                                 System.out.println("\nResend commend request");
 
                                 sendCommandRequest(channel, routerAddress, serverAddress, true);
@@ -137,30 +117,28 @@ public class UDPWriterClient1 {
 
                         System.out.println("Payload: " + payload);
 
-                        if (responsePacket.getType() == 1 & payload.compareTo("connectionrequest") == 0 & !receivedConnectionRequest)
-                            receivedConnectionRequest = true;
+                        if (responsePacket.getType() == 1 & payload.compareTo("connectionrequest") == 0 & !senderVariableSet.receivedConnectionRequest)
+                            senderVariableSet.receivedConnectionRequest = true;
 
-                        if (receivedConnectionRequest & !receivedCommandRequest)
+                        if (senderVariableSet.receivedConnectionRequest & !senderVariableSet.receivedCommandRequest)
                             if (responsePacket.getType() == 1 & payload.compareTo("commandrequest") == 0)
-                                receivedCommandRequest = true;
+                                senderVariableSet.receivedCommandRequest = true;
                     }
 
                     keys.clear();
                 }
 
-//                receivedConnectionRequest = true;
-//                receivedCommandRequest = true;
-
-                if (receivedConnectionRequest & receivedCommandRequest) {
+                // Packet sending process
+                if (senderVariableSet.receivedConnectionRequest & senderVariableSet.receivedCommandRequest) {
                     // Keep sending packets until all received
-                    while (!allPacketsReceived) {
+                    while (!senderVariableSet.allPacketsReceived) {
                         sendAllPacketsInWindow(channel, routerAddress, serverAddress, false);
 
-                        if (!sentAllPacketsWithinWindow)
+                        if (!senderVariableSet.sentAllPacketsWithinWindow)
                             System.out.println("\nSent all packets within the window to server");
 
                         // Start the timer
-                        selector.select(timeout);
+                        selector.select(Attributes.timeout);
 
                         Set<SelectionKey> keys = selector.selectedKeys();
 
@@ -168,8 +146,8 @@ public class UDPWriterClient1 {
                         if (keys.isEmpty()) {
                             System.out.println("\nTime out");
 
-                            System.out.println(allPacketsSent);
-                            System.out.println(allPacketsReceived);
+                            System.out.println(senderVariableSet.allPacketsSent);
+                            System.out.println(senderVariableSet.allPacketsReceived);
 
                             resetStateArray();
 
@@ -204,33 +182,33 @@ public class UDPWriterClient1 {
                                     setAcknowledgementArray(sequenceNumber);
 
                                     // Slide the window as much as possible
-                                    for (int indedx = 0; indedx < windowSize; indedx++)
+                                    for (int indedx = 0; indedx < Attributes.windowSize; indedx++)
                                         slideWindow();
 
                                     // Check if all packets have been received
-                                    if (allPacketsSent) {
-                                        allPacketsReceived = true;
+                                    if (senderVariableSet.allPacketsSent) {
+                                        senderVariableSet.allPacketsReceived = true;
 
                                         // The window should be completely empty if all packets have been sent
-                                        for (int windowIndex = 0; windowIndex < windowSize; windowIndex++) {
-                                            if (stateArray[windowIndex] | acknowledgementArray[windowIndex]) {
-                                                allPacketsReceived = false;
+                                        for (int windowIndex = 0; windowIndex < Attributes.windowSize; windowIndex++) {
+                                            if (senderVariableSet.stateArray[windowIndex] | senderVariableSet.acknowledgementArray[windowIndex]) {
+                                                senderVariableSet.allPacketsReceived = false;
                                                 break;
                                             }
                                         }
 
-                                        if (allPacketsReceived)
+                                        if (senderVariableSet.allPacketsReceived)
                                             selector.close();
                                     }
                                 }
 
-                                for (int windowIndex = 0; windowIndex < windowSize; windowIndex++)
-                                    System.out.println(stateArray[windowIndex] + " $$");
+                                for (int windowIndex = 0; windowIndex < Attributes.windowSize; windowIndex++)
+                                    System.out.println(senderVariableSet.stateArray[windowIndex] + " $$");
 
                                 System.out.println("");
 
-                                for (int windowIndex = 0; windowIndex < windowSize; windowIndex++)
-                                    System.out.println(acknowledgementArray[windowIndex] + " @@");
+                                for (int windowIndex = 0; windowIndex < Attributes.windowSize; windowIndex++)
+                                    System.out.println(senderVariableSet.acknowledgementArray[windowIndex] + " @@");
                             }
                         }
 
@@ -241,28 +219,6 @@ public class UDPWriterClient1 {
                 System.out.println("Merde");
             }
         }
-    }
-
-    private static void initializeAttributes() {
-        windowStartIndex = 0;
-
-        windowEndIndex = windowSize - 1;
-
-        receivedConnectionRequest = false;
-
-        receivedCommandRequest = false;
-
-        stateArray = new boolean[windowSize];
-
-        acknowledgementArray = new boolean[windowSize];
-
-        sentAllPacketsWithinWindow = false;
-
-        allPacketsSent = false;
-
-        allPacketsReceived = false;
-
-        n = 0;
     }
 
     private static void sendConnectionRequest(DatagramChannel channel, SocketAddress routerAddress, InetSocketAddress serverAddress, boolean resendPacket) throws IOException {
@@ -300,35 +256,35 @@ public class UDPWriterClient1 {
     }
 
     private static void sendAllPacketsInWindow(DatagramChannel channel, SocketAddress routerAddress, InetSocketAddress serverAddress, boolean resendPacket) throws IOException {
-        sentAllPacketsWithinWindow = false;
+        senderVariableSet.sentAllPacketsWithinWindow = false;
 
-        for (int windowIndex = 0; windowIndex < windowSize; windowIndex++) {
-            if (!stateArray[windowIndex] & !acknowledgementArray[windowIndex]) {
-                int sequenceNumber = windowStartIndex + windowIndex;
+        for (int windowIndex = 0; windowIndex < Attributes.windowSize; windowIndex++) {
+            if (!senderVariableSet.stateArray[windowIndex] & !senderVariableSet.acknowledgementArray[windowIndex]) {
+                int sequenceNumber = senderVariableSet.windowStartIndex + windowIndex;
 
                 // If sequence number exceeds the double window size, clamp it back to the valid range
-                if (sequenceNumber >= windowSize * 2)
-                    sequenceNumber %= windowSize;
+                if (sequenceNumber >= Attributes.windowSize * 2)
+                    sequenceNumber %= Attributes.windowSize;
 
                 int packetId = 0;
 
                 // Check if the window covers two sequence number sections
-                if (windowEndIndex < windowStartIndex) {
-                    if (sequenceNumber > windowEndIndex)
-                        packetId = (n - 1) * windowSize * 2 + sequenceNumber;
+                if (senderVariableSet.windowEndIndex < senderVariableSet.windowStartIndex) {
+                    if (sequenceNumber > senderVariableSet.windowEndIndex)
+                        packetId = (senderVariableSet.n - 1) * Attributes.windowSize * 2 + sequenceNumber;
                     else
-                        packetId = n * windowSize * 2 + sequenceNumber;
+                        packetId = senderVariableSet.n * Attributes.windowSize * 2 + sequenceNumber;
                 } else {
-                    packetId = n * windowSize * 2 + sequenceNumber;
+                    packetId = senderVariableSet.n * Attributes.windowSize * 2 + sequenceNumber;
                 }
 
-                if (packetId >= totalNumberOfPackets)
+                if (packetId >= senderVariableSet.totalNumberOfPackets)
                     break;
 
                 byte[] payloadByteArray = new byte[1013];
 
                 // The last one is the end packet, not a data packet
-                if (packetId == totalNumberOfPackets - 1) {
+                if (packetId == senderVariableSet.totalNumberOfPackets - 1) {
                     // Send the end packet to indicate this is the last packet
                     Packet packet = createPacket(4, sequenceNumber, serverAddress.getAddress(), serverAddress.getPort(), "udppacketend".getBytes());
 
@@ -345,21 +301,21 @@ public class UDPWriterClient1 {
                     System.out.println("Peer port number: " + packet.getPeerPort());
                     System.out.println("Payload: " + new String(packet.getPayload(), StandardCharsets.UTF_8));
 
-                    System.out.println("SSSSSSSSSS " + sequenceNumber + ", " + packetId + ", " + windowIndex + ", " + n);
+                    System.out.println("SSSSSSSSSS " + sequenceNumber + ", " + packetId + ", " + windowIndex + ", " + senderVariableSet.n);
 
-                    allPacketsSent = true;
+                    senderVariableSet.allPacketsSent = true;
                 } else {
                     // Check if the corresponding byte section has length of 1013
-                    if (packetId * 1013 + 1013 > commandLineByteArray.length) {
+                    if (packetId * 1013 + 1013 > senderVariableSet.commandLineByteArray.length) {
                         // If the length of remaining part is less than 1013, extract the rest of it
-                        for (int index = 0; index < commandLineByteArray.length % 1013; index++)
-                            payloadByteArray[index] = commandLineByteArray[packetId * 1013 + index];
+                        for (int index = 0; index < senderVariableSet.commandLineByteArray.length % 1013; index++)
+                            payloadByteArray[index] = senderVariableSet.commandLineByteArray[packetId * 1013 + index];
 
                         System.out.println("\n### " + new String(payloadByteArray, StandardCharsets.UTF_8));
                     } else {
                         // Extract the substring with 1013 bytes of length
                         for (int index = 0; index < 1013; index++)
-                            payloadByteArray[index] = commandLineByteArray[packetId * 1013 + index];
+                            payloadByteArray[index] = senderVariableSet.commandLineByteArray[packetId * 1013 + index];
 
                         System.out.println("\n&&& " + new String(payloadByteArray, StandardCharsets.UTF_8));
                     }
@@ -379,57 +335,57 @@ public class UDPWriterClient1 {
                     System.out.println("Peer port number: " + packet.getPeerPort());
                     System.out.println("Payload: " + new String(packet.getPayload(), StandardCharsets.UTF_8));
 
-                    System.out.println("SSSSSSSSSS " + sequenceNumber + ", " + packetId + ", " + windowIndex + ", " + n);
+                    System.out.println("SSSSSSSSSS " + sequenceNumber + ", " + packetId + ", " + windowIndex + ", " + senderVariableSet.n);
                 }
 
-                stateArray[windowIndex] = true;
+                senderVariableSet.stateArray[windowIndex] = true;
             }
         }
 
-        System.out.println("Index: " + windowStartIndex + ", " + windowEndIndex);
+        System.out.println("Index: " + senderVariableSet.windowStartIndex + ", " + senderVariableSet.windowEndIndex);
 
-        sentAllPacketsWithinWindow = true;
+        senderVariableSet.sentAllPacketsWithinWindow = true;
     }
 
     private static void setAcknowledgementArray(int sequenceNumber) {
         int index = 0;
 
         // Convert sequence number to window index
-        if (sequenceNumber > windowEndIndex) {
-            index = sequenceNumber - windowStartIndex;
+        if (sequenceNumber > senderVariableSet.windowEndIndex) {
+            index = sequenceNumber - senderVariableSet.windowStartIndex;
             System.out.println(index + " >>>>>>>>> " + sequenceNumber);
         } else {
-            index = windowSize - 1 - (windowEndIndex - sequenceNumber);
+            index = Attributes.windowSize - 1 - (senderVariableSet.windowEndIndex - sequenceNumber);
             System.out.println(index + " <<<<<<<<<<<<< " + sequenceNumber);
         }
 
-        if (stateArray[index] & !acknowledgementArray[index]) {
-            acknowledgementArray[index] = true;
-            System.out.println(acknowledgementArray[index]);
+        if (senderVariableSet.stateArray[index] & !senderVariableSet.acknowledgementArray[index]) {
+            senderVariableSet.acknowledgementArray[index] = true;
+            System.out.println(senderVariableSet.acknowledgementArray[index]);
         }
     }
 
     private static void resetStateArray() {
-        allPacketsReceived = false;
+        senderVariableSet.allPacketsReceived = false;
 
-        for (int index = 0; index < stateArray.length; index++)
-            stateArray[index] = false;
+        for (int index = 0; index < senderVariableSet.stateArray.length; index++)
+            senderVariableSet.stateArray[index] = false;
     }
 
     // Slide the window to the right by 1 step
     private static void slideWindow() {
         // First element in the window has to be true, otherwise cannot slide the window
-        if (acknowledgementArray[0]) {
-            windowStartIndex += 1;
-            windowEndIndex += 1;
+        if (senderVariableSet.acknowledgementArray[0]) {
+            senderVariableSet.windowStartIndex += 1;
+            senderVariableSet.windowEndIndex += 1;
 
             // If the index reaches the maximum of sequence number, reset it
-            if (windowStartIndex == windowSize * 2) {
-                windowStartIndex = 0;
-            } else if (windowEndIndex == windowSize * 2) {
-                windowEndIndex = 0;
+            if (senderVariableSet.windowStartIndex == Attributes.windowSize * 2) {
+                senderVariableSet.windowStartIndex = 0;
+            } else if (senderVariableSet.windowEndIndex == Attributes.windowSize * 2) {
+                senderVariableSet.windowEndIndex = 0;
 
-                n += 1;
+                senderVariableSet.n += 1;
             }
 
             shiftStateArray();
@@ -438,13 +394,13 @@ public class UDPWriterClient1 {
 
     // Shift all the elements in the window to the left by 1 step
     private static void shiftStateArray() {
-        for (int index = 1; index < stateArray.length; index++) {
-            stateArray[index - 1] = stateArray[index];
-            acknowledgementArray[index - 1] = acknowledgementArray[index];
+        for (int index = 1; index < senderVariableSet.stateArray.length; index++) {
+            senderVariableSet.stateArray[index - 1] = senderVariableSet.stateArray[index];
+            senderVariableSet.acknowledgementArray[index - 1] = senderVariableSet.acknowledgementArray[index];
         }
 
-        stateArray[stateArray.length - 1] = false;
-        acknowledgementArray[acknowledgementArray.length - 1] = false;
+        senderVariableSet.stateArray[senderVariableSet.stateArray.length - 1] = false;
+        senderVariableSet.acknowledgementArray[senderVariableSet.acknowledgementArray.length - 1] = false;
     }
 
     private static Packet createPacket(int packetType, int sequenceNumber, InetAddress peerAddress, int peerPortNumber, byte[] payload) {
@@ -458,11 +414,11 @@ public class UDPWriterClient1 {
     }
 
     private static boolean verifyPacket(int sequenceNumber) {
-        if (windowEndIndex < windowStartIndex) {
-            if (sequenceNumber > windowEndIndex & sequenceNumber < windowStartIndex)
+        if (senderVariableSet.windowEndIndex < senderVariableSet.windowStartIndex) {
+            if (sequenceNumber > senderVariableSet.windowEndIndex & sequenceNumber < senderVariableSet.windowStartIndex)
                 return false;
         } else {
-            if (sequenceNumber < windowStartIndex | sequenceNumber > windowEndIndex)
+            if (sequenceNumber < senderVariableSet.windowStartIndex | sequenceNumber > senderVariableSet.windowEndIndex)
                 return false;
         }
 
@@ -485,7 +441,7 @@ public class UDPWriterClient1 {
 
         parser.accepts("server-port", "EchoServer listening port")
                 .withOptionalArg()
-                .defaultsTo("8007");
+                .defaultsTo("8080");
 
         OptionSet opts = parser.parse(args);
 

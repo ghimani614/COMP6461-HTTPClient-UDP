@@ -1,6 +1,6 @@
 # Lab Assignment 3
 
-This Java project implemented all the functionalities of COMP 6461 Lab Assignment 3, including all the optional tasks(bonus marks). It was developed based on the multiplex echo server template.
+This Java project implemented all the functionalities of COMP 6461 Lab Assignment 3. It was developed based on the UDP template and multiplex echo server template.
 
 ## Requirement
 1. [Oracle JDK 11](https://www.oracle.com/java/technologies/javase-jdk11-downloads.html)
@@ -16,16 +16,12 @@ Use Intellij IDE to open the project, navigate to netsample/src/main/java/ca/con
 
 
 ## Execution
-1. Run MultiplexServer.java
-2. Run ServerCommand.java, and enter one of the server commands from the example below to run the server
-3. Run httpc.java, enter the port number that matches the server
-4. Try any client commands from the example below to see the result
-
-To reproduce Optional Task(Bonus Marks) of Multi-Requests Support, follow step 1 and 2 above, after that selectively run ReaderClient1, ReaderClient2, WriterClient1 or WriterClient2 depending on the situation you want to reproduce.
-
-1. Two clients are writing to the same file: Run WriterClient1 and WriterClient2
-2. One client is reading, while another is writing to the same file: Run ReaderClient1 or ReaderClient2 and WriterClient1 or WriterClient2<br />
-3. Two clients are reading the same file: Run ReaderClient1 and ReaderClient2
+1. Open terminal, use "cd" to navigate inside the router source folder that contains router.go
+2. Enter "./router --port=3000 --drop-rate=0.5 --max-delay=10ms --seed=1" to run the router
+3. Run UDPServer.java in udp package
+4. Run ServerCommand.java in httpc package, and enter one of the server commands from the example below to run the server
+5. Run UDPClient.java in udp package, enter the port number that matches the server
+6. Try any client commands from the example below to see the result
 
 ## Implementation
 Rules:
@@ -37,19 +33,57 @@ Rules:
 
 Syntax parser
 
-We used string manipulation to parse the command line. The entire string will be broken into several chunks, and syntactic correctness will be verified by comparing the content of each chunk. The method parseHttpfsClientCommandLine(String commandLineString) and parseServerCommandLine(String commandLineString) in MultiplexServer class implemented this feature.
+We used string manipulation to parse the command line. The entire string will be broken into several chunks, and syntactic correctness will be verified by comparing the content of each chunk. The method parseHttpfsClientCommandLine(String commandLineString) and parseServerCommandLine(String commandLineString) in UDPServer class implemented this feature.
 
 
 File system
 
 We used Java NIO2 APIs to implement the file reading/writing/copying.
 
-Multi-Requests Support
 
-It is a classic readers-writers problem. Multiple readers can read simultaneously, but only one writer is allowed to write at a time. In this assignment, we used I/O multiplexing model to make it possible to perform I/O operations on multiple descriptors in one thread.
+Packet Type
+
+We use numbers to represent different packet types, but in this project, we didn't use NAK. The NAK slot is kept for maintaining the format.
+
+0: SYN<br />
+1: SYN-ACK<br />
+2: ACK<br />
+3: NAK<br />
+4: DATA<br />
+
+
+Selective Repeat ARQ
+
+We simply used two indexes to represent a sliding window. The length of sequence number can be two times of window size. And we use total number of packets to indicate the minimum packets that are required for an entire command line. The window size variable in Attributes.java is adjustable, as long as it is the power of 2.
+
+Data consistency
+
+We simulated a scenario with 0.95 drop-rate and 90ms of delay, which was close to the worst case. Despite the frequent occurrence of dropping packets(only 6 packets were sent successfully within 40 minutes), the correctness of the result still could be guaranteed.
+
 
 ## Examples
-All the available command lines are listed here. You should replace workingDirectoryAbsolutePath with the actual path on your computer.
+All the available command lines are listed here. For the assignment 2 example, you should replace workingDirectoryAbsolutePath with the actual path on your computer.
+
+### Assignment 1
+
+1. httpc post url<br />
+   httpc post 'http://httpbin.org/post'
+2. httpc post -h key:value url<br />
+   httpc post -h key:value 'http://httpbin.org/post'
+3. httpc post -h key:value -d "inline data" url<br />
+   httpc post -h key:value -d '{"Assignment": 1}' 'http://httpbin.org/post'
+4. httpc post -h key:value -f "file name" url<br />
+   httpc post -h key:value -f Data.json 'http://httpbin.org/post'
+5. httpc post -v url<br />
+   httpc post -v 'http://httpbin.org/post'
+6. httpc post -v -h key:value url<br />
+   Example: httpc post -v -h key:value 'http://httpbin.org/post'
+7. httpc post -v -h key:value -d "inline data" url<br />
+   httpc post -v -h key:value -d '{"Assignment": 1}' 'http://httpbin.org/post'
+8. httpc post -v -h key:value -f "file name" url<br />
+   httpc post -v -h key:value -f Data.json 'http://httpbin.org/post'
+
+### Assignment 2
 
 Client
 1. GET /<br />
@@ -118,3 +152,8 @@ httpfs -p 8080 -d workingDirectoryAbsolutePath
 5. https://www.baeldung.com/java-nio-2-file-api
 6. https://medium.com/@liakh.aliaksandr/java-sockets-i-o-blocking-non-blocking-and-asynchronous-fb7f066e4ede
 7. https://wiki.eecs.yorku.ca/course_archive/2007-08/F/6490A/readers-writers
+8. http://tutorials.jenkov.com/java-nio/selectors.html
+9. https://stackoverflow.com/questions/10055913/set-timeout-for-socket-receive
+10. https://www.tutorialspoint.com/java_nio/java_nio_datagram_channel.htm
+11. https://www.baeldung.com/java-nio-selector
+12. https://www.waitingforcode.com/java-i-o/handling-multiple-io-one-thread-nio-selector/read

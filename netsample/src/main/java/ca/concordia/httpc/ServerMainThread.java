@@ -1,9 +1,11 @@
 package ca.concordia.httpc;
 
+import ca.concordia.udp.UDPServer;
+
 import java.io.IOException;
 
 public class ServerMainThread extends Thread {
-    MultiplexServer multiplexServer = new MultiplexServer();
+    UDPServer udpServer = new UDPServer();
 
     public boolean startRunningServer = false;
 
@@ -13,7 +15,7 @@ public class ServerMainThread extends Thread {
             System.out.print("");
             if (startRunningServer) {
                 try {
-                    multiplexServer.runServer();
+                    udpServer.runServer();
                 } catch (IOException e) {
                     e.printStackTrace();
                 }

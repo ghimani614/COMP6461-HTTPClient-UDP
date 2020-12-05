@@ -1,11 +1,13 @@
 package ca.concordia.httpc;
 
+import ca.concordia.udp.UDPServer;
+
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 
 public class ServerCommandThread extends Thread {
-    MultiplexServer multiplexServer = new MultiplexServer();
+    UDPServer udpServer = new UDPServer();
     ServerMainThread serverMainThread = new ServerMainThread();
 
     public boolean confirmedToRunServer = false;
@@ -23,12 +25,12 @@ public class ServerCommandThread extends Thread {
 
             BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
 
-            String receivedString = "", responseString = "Bais?";
+            String receivedString = "", responseString = "?";
 
             while (true) {
                 receivedString = dataInputStream.readUTF();
 
-                responseString = multiplexServer.parseServerCommandLine(receivedString);
+                responseString = udpServer.parseServerCommandLine(receivedString);
 
                 if (confirmedToRunServer) {
                     serverMainThread.startRunningServer = true;

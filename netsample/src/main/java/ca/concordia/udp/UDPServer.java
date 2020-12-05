@@ -1,30 +1,68 @@
 package ca.concordia.udp;
 
+import ca.concordia.httpc.FileSystem;
+import ca.concordia.httpc.ServerCommandThread;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
+import java.io.*;
+import java.net.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.DatagramChannel;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.util.Set;
+import java.util.HashMap;
 
-import static java.nio.channels.SelectionKey.OP_READ;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Arrays.asList;
 
 public class UDPServer {
+    private static ServerCommandThread serverThread = new ServerCommandThread();
+
+    private FileSystem fileSystem = new FileSystem();
+
+    private static int port = 8080;
+
+    private static String workingDirectoryPath = FileSystem.rootDirectoryAbsolutePath;
+    /*
+    C:\Users\Himani\IdeaProjects\COMP6461-httpServerApplication\working-directory1
+    /Users/hongyushen/Documents/IntelliJProject/COMP6461-httpServerApplication/working-directory1
+    */
+
+    public static boolean serverStarted = false;
+
+    private String currentURL = "";
+    private String redirectedURL = "", redirectionResultString = "";
+
+    private String verbosityString = "";
+
+    private HashMap<String, String> headerKeyValuePairHashMap;
+
+    // Uses a single buffer to demonstrate that all clients are running in a single thread
+    private final ByteBuffer buffer = ByteBuffer.allocate(4096);
+
+    private int numberOfReaders = 0, numberOfWriters = 0;
+
+
+    // UDP variables
+    private SocketAddress routerAddress = null;
+
+    private static int serverPort = 8080;
+
+    private static ServerSenderThread serverSenderThread1 = new ServerSenderThread();
+    private static ServerSenderThread serverSenderThread2 = new ServerSenderThread();
+
+    private boolean serverSenderThread1Started = false, serverSenderThread2Started = false;
+
     private boolean clientConnected1 = false, clientConnected2 = false;
 
-    private String clientAdddress1 = "", clientAdddress2 = "";
+    private String clientAddress1 = "", clientAddress2 = "";
 
     private ReceiverVariableSet receiverVariableSet1 = new ReceiverVariableSet();
+    private ReceiverVariableSet receiverVariableSet2 = new ReceiverVariableSet();
 
     private static final Logger logger = LoggerFactory.getLogger(UDPServer.class);
 
@@ -32,198 +70,242 @@ public class UDPServer {
         try (DatagramChannel channel = DatagramChannel.open()) {
             channel.bind(new InetSocketAddress(port));
 
-            logger.info("EchoServer is listening at {}", channel.getLocalAddress());
+            logger.info("Server receiver is listening at {}", channel.getLocalAddress());
 
             ByteBuffer buffer = ByteBuffer
                     .allocate(Packet.MAX_LEN)
                     .order(ByteOrder.BIG_ENDIAN);
 
             receiverVariableSet1.initializeAttributes();
-
-            SocketAddress routerAddress = null;
+            receiverVariableSet2.initializeAttributes();
+            serverSenderThread1.senderVariableSet.initializeAttributes();
+            serverSenderThread2.senderVariableSet.initializeAttributes();
 
             while (true) {
-                // Three-way handshake process
-                while (!receiverVariableSet1.receivedConnectionRequest | !receiverVariableSet1.receivedCommandRequest) {
-                    buffer.clear();
-                    routerAddress = channel.receive(buffer);
+//                while ((receiverVariableSet1.allPacketsReceived & serverSenderThread1.senderVariableSet.keepSending) | (receiverVariableSet1.allPacketsReceived & serverSenderThread2.senderVariableSet.keepSending)) {
+//
+//                }
 
-                    // Parse a packet from the received raw data.
-                    buffer.flip();
-                    Packet packet = Packet.fromBuffer(buffer);
-                    buffer.flip();
-
-                    System.out.println("\nReceived packet: " + packet);
-                    System.out.println("Packet type: " + packet.getType());
-                    System.out.println("Sequence number: " + packet.getSequenceNumber());
-                    System.out.println("Peer address: " + packet.getPeerAddress());
-                    System.out.println("Peer port number: " + packet.getPeerPort());
-
-                    String payload = new String(packet.getPayload(), UTF_8);
-
-                    // Remove empty bytes from the string
-                    payload = payload.replaceAll("\u0000.*", "");
-
-                    System.out.println("Payload: " + payload);
-
-                    if (packet.getType() == 0 & payload.compareTo("connectionrequest") == 0 & !receiverVariableSet1.receivedConnectionRequest) {
-                        receiverVariableSet1.receivedConnectionRequest = true;
-
-                        if (!clientConnected1) {
-                            clientAdddress1 = packet.getPeerAddress().toString();
-
-                            clientConnected1 = true;
-                        } else if (!clientConnected2) {
-                            clientAdddress2 = packet.getPeerAddress().toString();
-
-                            clientConnected2 = true;
-                        }
-                    }
-
-                    if (receiverVariableSet1.receivedConnectionRequest & !receiverVariableSet1.receivedCommandRequest)
-                        if (packet.getType() == 0 & payload.compareTo("commandrequest") == 0)
-                            receiverVariableSet1.receivedCommandRequest = true;
-
-                    Packet responsePacket = packet.toBuilder()
-                            .setType(1)
-                            .setPayload(payload.getBytes())
-                            .create();
-
-                    channel.send(responsePacket.toBuffer(), routerAddress);
+                if (receiverVariableSet1.allPacketsReceived & !serverSenderThread1.senderVariableSet.keepSending) {
+                    receiverVariableSet1.initializeAttributes();
+                    System.out.println("mmmmmmmmm");
+                } else if (receiverVariableSet2.allPacketsReceived & !serverSenderThread2.senderVariableSet.keepSending) {
+                    receiverVariableSet2.initializeAttributes();
                 }
 
+                buffer.clear();
+                routerAddress = channel.receive(buffer);
 
-                // Packet receiving process
-                if (receiverVariableSet1.receivedConnectionRequest & receiverVariableSet1.receivedCommandRequest) {
-                    while (!receiverVariableSet1.generatedCompleteCommand) {
-                        buffer.clear();
-                        routerAddress = channel.receive(buffer);
+                // Parse a packet from the received raw data.
+                buffer.flip();
+                Packet packet = Packet.fromBuffer(buffer);
+                buffer.flip();
 
-                        // Parse a packet from the received raw data.
-                        buffer.flip();
-                        Packet packet = Packet.fromBuffer(buffer);
-                        buffer.flip();
+                int sequenceNumber = (int) packet.getSequenceNumber();
 
-                        String payload = new String(packet.getPayload(), UTF_8);
+                String peerAddress = packet.getPeerAddress().toString().replaceAll("\u0000.*", "");
+                peerAddress += ":" + packet.getPeerPort();
 
+                String payload = new String(packet.getPayload(), UTF_8);
+
+                // Remove empty bytes from the string
+                payload = payload.replaceAll("\u0000.*", "");
+
+                // If it is a connection request, check if the client is registered or not
+                if (packet.getType() == 0 & payload.compareTo("connectionrequest") == 0) {
+                    // Register clients by its address
+                    if (!clientConnected1) {
+                        clientAddress1 = peerAddress;
+
+                        System.out.println("\nNew client " + peerAddress + " registered");
+
+                        clientConnected1 = true;
+                    } else if (clientConnected1 & !clientConnected2) {
+                        clientAddress2 = peerAddress;
+
+                        System.out.println("\nNew client " + peerAddress + " registered");
+
+                        clientConnected2 = true;
+                    }
+                }
+
+                // Direct the packet to corresponding process based on client address
+                if (peerAddress.compareTo(clientAddress1) == 0) {
+                    if (!receiverVariableSet1.allPacketsReceived) {
                         System.out.println("\nReceived packet: " + packet);
                         System.out.println("Packet type: " + packet.getType());
-                        System.out.println("Sequence number: " + packet.getSequenceNumber());
-                        System.out.println("Peer address: " + packet.getPeerAddress());
+                        System.out.println("Sequence number: " + sequenceNumber);
+                        System.out.println("Peer address: " + peerAddress);
                         System.out.println("Peer port number: " + packet.getPeerPort());
                         System.out.println("Payload: " + payload);
+                    } else {
+                        System.out.println("\nIgnore duplicated or seriously delayed packets");
+                    }
 
-                        int sequenceNumber = (int) packet.getSequenceNumber();
+                    // Three-way handshake process
+                    if (!receiverVariableSet1.receivedConnectionRequest | !receiverVariableSet1.receivedCommandRequest) {
+                        if (packet.getType() == 0) {
+                            if (payload.compareTo("connectionrequest") == 0 & !receiverVariableSet1.receivedConnectionRequest) {
+                                receiverVariableSet1.receivedConnectionRequest = true;
 
-                        boolean validSequenceNumber = verifySequenceNumber(sequenceNumber);
+                                // Register clients by its address
+                                if (!clientConnected1) {
+                                    clientAddress1 = peerAddress;
 
-                        if (packet.getType() == 4 & validSequenceNumber) {
-                            int windowIndex = 0;
+                                    clientConnected1 = true;
+                                } else if (!clientConnected2 & clientAddress1.compareTo(peerAddress) != 0) {
+                                    clientAddress2 = peerAddress;
 
-                            // Convert sequence number to window index
-                            if (sequenceNumber > receiverVariableSet1.windowEndIndex)
-                                windowIndex = sequenceNumber - receiverVariableSet1.windowStartIndex;
-                            else
-                                windowIndex = Attributes.windowSize - 1 - (receiverVariableSet1.windowEndIndex - sequenceNumber);
-
-                            if (payload.compareTo("udppacketend") == 0) {
-                                receiverVariableSet1.endPacketReceived = true;
-
-                                if (!receiverVariableSet1.stateArray[windowIndex])
-                                    receiverVariableSet1.stateArray[windowIndex] = true;
-
-                                insertPacketToBufferArray(windowIndex, "");
-                            } else {
-                                if (!receiverVariableSet1.stateArray[windowIndex])
-                                    receiverVariableSet1.stateArray[windowIndex] = true;
-
-                                insertPacketToBufferArray(windowIndex, payload);
-                            }
-
-                            // Slide the window as much as possible
-                            for (int index = 0; index < Attributes.windowSize; index++)
-                                slideWindow();
-
-
-                            if (receiverVariableSet1.endPacketReceived) {
-                                // Check if all packets have been received
-                                receiverVariableSet1.allPacketsReceived = true;
-
-                                // The window should be completely empty if all packets have been sent
-                                for (int index = 0; index < Attributes.windowSize; index++) {
-                                    if (receiverVariableSet1.stateArray[index] | receiverVariableSet1.packetBufferStateArray[index]) {
-                                        receiverVariableSet1.allPacketsReceived = false;
-
-                                        break;
-                                    }
+                                    clientConnected2 = true;
                                 }
-
-                                if (receiverVariableSet1.allPacketsReceived)
-                                    receiverVariableSet1.commandString = generateCompleteCommand();
                             }
 
-                            for (int index = 0; index < Attributes.windowSize; index++)
-                                System.out.println(receiverVariableSet1.stateArray[index] + " $$");
-
-                            System.out.println("");
-
-                            for (int index = 0; index < Attributes.windowSize; index++)
-                                System.out.println(receiverVariableSet1.packetBufferStateArray[index] + " @@");
-
-                            System.out.println(receiverVariableSet1.windowStartIndex + ", " + receiverVariableSet1.windowEndIndex);
-
+                            if (receiverVariableSet1.receivedConnectionRequest & !receiverVariableSet1.receivedCommandRequest)
+                                if (packet.getType() == 0 & payload.compareTo("commandrequest") == 0)
+                                    receiverVariableSet1.receivedCommandRequest = true;
 
                             Packet responsePacket = packet.toBuilder()
-                                    .setType(2)
-                                    .setPayload(payload.getBytes())
-                                    .create();
-
-                            channel.send(responsePacket.toBuffer(), routerAddress);
-                        } else {
-                            int packetType = 0;
-
-                            if (packet.getType() == 0)
-                                packetType = 1;
-                            else
-                                packetType = 2;
-
-                            Packet responsePacket = packet.toBuilder()
-                                    .setType(packetType)
+                                    .setType(1)
                                     .setPayload(payload.getBytes())
                                     .create();
 
                             channel.send(responsePacket.toBuffer(), routerAddress);
                         }
+                    } else {
+                        // Packet receiving process(after three-way handshake process)
+                        if (!receiverVariableSet1.generatedCompleteCommand) {
+                            boolean validSequenceNumber = verifySequenceNumber(sequenceNumber);
+
+                            if (packet.getType() == 4 & validSequenceNumber) {
+                                int windowIndex = 0;
+
+                                // Convert sequence number to window index
+                                if (sequenceNumber > receiverVariableSet1.windowEndIndex)
+                                    windowIndex = sequenceNumber - receiverVariableSet1.windowStartIndex;
+                                else
+                                    windowIndex = Attributes.windowSize - 1 - (receiverVariableSet1.windowEndIndex - sequenceNumber);
+
+                                if (payload.compareTo("udppacketend") == 0) {
+                                    receiverVariableSet1.endPacketReceived = true;
+
+                                    if (!receiverVariableSet1.stateArray[windowIndex])
+                                        receiverVariableSet1.stateArray[windowIndex] = true;
+
+                                    insertPacketToBufferArray(windowIndex, "");
+                                } else {
+                                    if (!receiverVariableSet1.stateArray[windowIndex])
+                                        receiverVariableSet1.stateArray[windowIndex] = true;
+
+                                    insertPacketToBufferArray(windowIndex, payload);
+                                }
+
+                                // Slide the window as much as possible
+                                for (int index = 0; index < Attributes.windowSize; index++)
+                                    slideWindow();
+
+
+                                if (receiverVariableSet1.endPacketReceived) {
+                                    // Check if all packets have been received
+                                    receiverVariableSet1.allPacketsReceived = true;
+
+                                    // The window should be completely empty if all packets have been sent
+                                    for (int index = 0; index < Attributes.windowSize; index++) {
+                                        if (receiverVariableSet1.stateArray[index] | receiverVariableSet1.packetBufferStateArray[index]) {
+                                            receiverVariableSet1.allPacketsReceived = false;
+
+                                            break;
+                                        }
+                                    }
+
+                                    if (receiverVariableSet1.allPacketsReceived)
+                                        receiverVariableSet1.commandString = generateCompleteCommand();
+                                }
+
+                                Packet responsePacket = packet.toBuilder()
+                                        .setType(2)
+                                        .setPayload(payload.getBytes())
+                                        .create();
+
+                                channel.send(responsePacket.toBuffer(), routerAddress);
+                            } else {
+                                int packetType = 0;
+
+                                if (packet.getType() == 0)
+                                    packetType = 1;
+                                else
+                                    packetType = 2;
+
+                                Packet responsePacket = packet.toBuilder()
+                                        .setType(packetType)
+                                        .setPayload(payload.getBytes())
+                                        .create();
+
+                                channel.send(responsePacket.toBuffer(), routerAddress);
+                            }
+                        }
+
+                        if (receiverVariableSet1.allPacketsReceived) {
+                            if (!receiverVariableSet1.startParsingCommendLine) {
+                                System.out.println("\nReceived all packets");
+
+                                System.out.println("\nClient " + clientAddress1 + " request: " + receiverVariableSet1.commandString);
+
+                                System.out.println("\nStart parsing commend line");
+
+                                String requestString = receiverVariableSet1.commandString;
+
+                                String responseString = "";
+
+                                if (requestString.substring(0, 5).compareTo("httpc") == 0)
+                                    responseString = parseClientCommandLine(requestString);
+                                else if (requestString.substring(0, 6).compareTo("httpfs") == 0)
+                                    responseString = parseHttpfsClientCommandLine(requestString);
+                                else
+                                    responseString = "99: Invalid syntax";
+
+                                serverSenderThread1.responseString = responseString;
+
+                                serverSenderThread1.startSendingPackets = true;
+
+                                System.out.println("\nParsing finished");
+
+                                if (!serverSenderThread1.senderVariableSet.keepSending) {
+                                    serverSenderThread1.senderVariableSet.initializeAttributes();
+
+                                    serverSenderThread1.senderVariableSet.keepSending = true;
+                                }
+
+                                System.out.println("\nStart sending response packets");
+
+                                if (!serverSenderThread1Started) {
+                                    serverSenderThread1.clientPort = 5000;
+
+                                    serverSenderThread1.start();
+
+                                    serverSenderThread1Started = true;
+                                }
+
+                                receiverVariableSet1.startParsingCommendLine = true;
+                            } else {
+                                int packetType = 0;
+
+                                if (packet.getType() == 0)
+                                    packetType = 1;
+                                else
+                                    packetType = 2;
+
+                                Packet responsePacket = packet.toBuilder()
+                                        .setType(packetType)
+                                        .setPayload(payload.getBytes())
+                                        .create();
+
+                                channel.send(responsePacket.toBuffer(), routerAddress);
+                            }
+                        }
                     }
+                } else if (peerAddress.compareTo(clientAddress2) == 0) {
+
                 }
-
-                if (!receiverVariableSet1.startParsingCommendLine) {
-                    String responseString = "merde";
-                    System.out.println("merde");
-                    receiverVariableSet1.startParsingCommendLine = true;
-//                    runSender(routerAddress, new InetSocketAddress(port));
-                }
-            }
-        }
-    }
-
-    private void runSender(SocketAddress routerAddress, InetSocketAddress serverAddress) throws IOException {
-        try (DatagramChannel channel = DatagramChannel.open()) {
-            channel.configureBlocking(false);
-
-            Selector selector = Selector.open();
-
-            channel.register(selector, OP_READ);
-
-            while (!receiverVariableSet1.receivedResponse) {
-                // Start the timer
-                selector.select(Attributes.timeout);
-
-                Set<SelectionKey> keys = selector.selectedKeys();
-
-                // Time out
-                if (keys.isEmpty())
-                    System.out.println("//??????");
             }
         }
     }
@@ -231,7 +313,7 @@ public class UDPServer {
     private void insertPacketToBufferArray(int windowIndex, String payload) {
         // Only insert received and not buffered packets
         if (receiverVariableSet1.stateArray[windowIndex] & !receiverVariableSet1.packetBufferStateArray[windowIndex]) {
-            receiverVariableSet1.packetBufferArray[windowIndex] = payload;
+            receiverVariableSet1.packetBufferArray[windowIndex] = payload.replaceAll("\u0000.*", "");
 
             receiverVariableSet1.packetBufferStateArray[windowIndex] = true;
         }
@@ -249,10 +331,6 @@ public class UDPServer {
                 receiverVariableSet1.windowStartIndex = 0;
             else if (receiverVariableSet1.windowEndIndex == Attributes.windowSize * 2)
                 receiverVariableSet1.windowEndIndex = 0;
-
-            System.out.println("wwwwwww " + receiverVariableSet1.windowStartIndex + ", " + receiverVariableSet1.windowEndIndex);
-            System.out.println("p1 " + receiverVariableSet1.packetBufferArray[0]);
-            System.out.println("p2 " + receiverVariableSet1.packetBufferArray[1]);
 
             receiverVariableSet1.requestBufferList.add(receiverVariableSet1.packetBufferArray[0]);
 
@@ -286,29 +364,1428 @@ public class UDPServer {
         return true;
     }
 
-    private  String generateCompleteCommand() {
+    private String generateCompleteCommand() {
         receiverVariableSet1.commandString = "";
 
-        for (int index = 0; index < receiverVariableSet1.requestBufferList.size(); index++) {
-            System.out.println("~~~~~~\n" + receiverVariableSet1.requestBufferList.get(index));
+        for (int index = 0; index < receiverVariableSet1.requestBufferList.size(); index++)
             receiverVariableSet1.commandString += receiverVariableSet1.requestBufferList.get(index);
-        }
 
         receiverVariableSet1.generatedCompleteCommand = true;
 
         return receiverVariableSet1.commandString;
     }
 
+    private String parseClientCommandLine(String commandLineString) {
+        commandLineString = preprocessCommandLine(commandLineString);
+
+        String[] commandLineStringArray = commandLineString.split(" ");
+
+        if (commandLineStringArray.length > 0) {
+            // Check the starting word, must start with httpc
+            if (commandLineStringArray[0].compareTo("httpc") != 0) {
+                return "Invalid syntax";
+            } else {
+                String urlString;
+
+                if (commandLineStringArray.length == 2) {
+                    if (compareStringsWithChar("help", commandLineStringArray[1]))
+                        return "httpc is a curl-like application but supports HTTP protocol only.\nUsage:\n    httpc command [arguments]\nThe commands are:\n    get executes a HTTP GET request and prints the response.\n    post executes a HTTP POST request and prints the response.\n    help prints this screen.\n\n" +
+                                "Use \"httpc help [command]\" for more information about a command.";
+                } else if (commandLineStringArray.length > 2) {
+                    if (compareStringsWithChar("help", commandLineStringArray[1])) {
+                        if (compareStringsWithChar("get", commandLineStringArray[2]))
+                            return "usage: httpc get [-v] [-h key:value] URL \n\n" + "Get executes a HTTP GET request for a given URL.\n\n   -v             Prints the detail of the response such as protocol, status, and headers.\n   -h key:value   Associates headers to HTTP Request with the format 'key:value'.";
+                        else if (compareStringsWithChar("post", commandLineStringArray[2]))
+                            return "usage: httpc post [-v] [-h key:value] [-d inline-data] [-f file] URL\n\nPost executes a HTTP POST request for a given URL with inline data or from file.\n\n   -v             Prints the detail of the response such as protocol, status, and headers.\n   -h key:value   Associates headers to HTTP Request with the format 'key:value'.\n   -d string      Associates an inline data to the body HTTP POST request.\n   -f file        Associates the content of a file to the body HTTP POST request.\n\nEither [-d] or [-f] can be used but not both.";
+
+                        return "Invalid syntax";
+                    } else if (compareStringsWithChar("get", commandLineStringArray[1])) {
+                        if (compareStringsWithChar("-v", commandLineStringArray[2])) {
+                            // httpc get -v url
+                            if (!verifyURL(commandLineStringArray[3]))
+                                return "Invalid syntax";
+
+                            urlString = currentURL;
+
+                            // Test the URL to redirect or not
+                            int redirectionResultCode = detectRedirection(urlString);
+
+                            if (redirectionResultCode == -1)
+                                return "Redirection errors.";
+                            else if (redirectionResultCode == 0)
+                                redirectionResultString = "No redirection detected\n";
+                            else if (redirectionResultCode == 1)
+                                urlString = redirectedURL;
+
+                            return redirectionResultString + "\n" + getHeaderValueByKey(urlString, null) + "\nServer: " + getHeaderValueByKey(urlString, "Server") + "\nDate: " + getHeaderValueByKey(urlString, "Date") + "\nContent-Type: " + getHeaderValueByKey(urlString, "Content-Type") + "\nContent-Length: " + getHeaderValueByKey(urlString, "Content-Length") + "\nConnection: " + getHeaderValueByKey(urlString, "Connection") + "\nAccess-Control-Allow-Origin: " + getHeaderValueByKey(urlString, "Access-Control-Allow-Origin") + "\nAccess-Control-Allow-Credentials: " + getHeaderValueByKey(urlString, "Access-Control-Allow-Credentials") + "\n\n" + getHttpResponse(urlString);
+                        } else if (compareStringsWithChar("-h", commandLineStringArray[2])) {
+                            // httpc get -h key:value url
+                            if (!verifyURL(commandLineStringArray[commandLineStringArray.length - 1]))
+                                return "Invalid syntax";
+
+                            urlString = currentURL;
+
+                            // Test the URL to redirect or not
+                            int redirectionResultCode = detectRedirection(urlString);
+
+                            if (redirectionResultCode == -1)
+                                return "Redirection errors.";
+                            else if (redirectionResultCode == 0)
+                                redirectionResultString = "No redirection detected\n";
+                            else if (redirectionResultCode == 1)
+                                urlString = redirectedURL;
+
+                            verbosityString = "";
+
+                            // There could be multiple header parameters
+                            if (!extractHeaderParameters(commandLineStringArray, 3, commandLineStringArray.length - 1))
+                                return "Invalid syntax";
+
+                            int index = 0;
+
+                            for (String keyString : headerKeyValuePairHashMap.keySet()) {
+                                // Append each key search to the return string
+                                verbosityString += keyString + ": " + getHeaderValueByKey(urlString, keyString);
+
+                                // Append a new line except for the last line
+                                if (index != headerKeyValuePairHashMap.size() - 1)
+                                    verbosityString += "\n";
+
+                                index += 1;
+                            }
+
+                            return redirectionResultString + "\n" + verbosityString;
+                        } else {
+                            // httpc get url
+
+                            if (!verifyURL(commandLineStringArray[2]))
+                                return "Invalid syntax";
+
+                            urlString = currentURL;
+
+                            // Test the URL to redirect or not
+                            int redirectionResultCode = detectRedirection(urlString);
+
+                            if (redirectionResultCode == -1)
+                                return "Redirection errors.";
+                            else if (redirectionResultCode == 0)
+                                redirectionResultString = "No redirection detected\n";
+                            else if (redirectionResultCode == 1)
+                                urlString = redirectedURL;
+
+                            return redirectionResultString + "\n" + getHttpResponse(urlString);
+                        }
+                    } else if (compareStringsWithChar("post", commandLineStringArray[1])) {
+                        if (compareStringsWithChar("-v", commandLineStringArray[2])) {
+                            if (compareStringsWithChar("-h", commandLineStringArray[3])) {
+                                if (commandLineStringArray.length >= 6 & !compareStringsWithChar("-d", commandLineStringArray[commandLineStringArray.length - 3]) & !compareStringsWithChar("-f", commandLineStringArray[commandLineStringArray.length - 3])) {
+                                    // httpc post -v -h key:value url
+
+                                    if (!verifyURL(commandLineStringArray[commandLineStringArray.length - 1]))
+                                        return "Invalid syntax";
+
+                                    urlString = currentURL;
+
+                                    // Test the URL to redirect or not
+                                    int redirectionResultCode = detectRedirection(urlString);
+
+                                    if (redirectionResultCode == -1)
+                                        return "Redirection errors.";
+                                    else if (redirectionResultCode == 0)
+                                        redirectionResultString = "No redirection detected\n";
+                                    else if (redirectionResultCode == 1)
+                                        urlString = redirectedURL;
+
+                                    // There could be multiple header parameters
+                                    if (!extractHeaderParameters(commandLineStringArray, 4, commandLineStringArray.length - 1))
+                                        return "Invalid syntax";
+
+                                    // Provided data
+                                    // header parameter list: headerKeyValuePairHashMap
+                                    // url: urlString
+
+                                    // For debugging
+                                    for (String keyString : headerKeyValuePairHashMap.keySet())
+                                        System.out.println("key: " + keyString + " value: " + headerKeyValuePairHashMap.get(keyString));
+
+                                    verbosityString = getHeaderValueByKey(urlString, null) + "\nServer: " + getHeaderValueByKey(urlString, "Server") + "\nDate: " + getHeaderValueByKey(urlString, "Date") + "\nContent-Type: " + getHeaderValueByKey(urlString, "Content-Type") + "\nContent-Length: " + getHeaderValueByKey(urlString, "Content-Length") + "\nConnection: " + getHeaderValueByKey(urlString, "Connection") + "\nAccess-Control-Allow-Origin: " + getHeaderValueByKey(urlString, "Access-Control-Allow-Origin") + "\nAccess-Control-Allow-Credentials: " + getHeaderValueByKey(urlString, "Access-Control-Allow-Credentials") + "\n";
+
+                                    return redirectionResultString + "\n" + verbosityString + "\n" + postHttpResponse(urlString, headerKeyValuePairHashMap, null);
+                                } else if (compareStringsWithChar("-d", commandLineStringArray[commandLineStringArray.length - 3])) {
+                                    // httpc post -v -h key:value -d "inline data" url
+
+                                    // Verify the format of inline data
+
+                                    // Remove empty bytes from the string
+                                    String inlineDataString = commandLineStringArray[commandLineStringArray.length - 2].replaceAll("\u0000.*", "");
+
+                                    // Check if it is empty
+                                    if (!compareStringsWithChar("", inlineDataString)) {
+                                        // Check the inline data format, it should be wrapped by a pair of apostrophes
+                                        if (inlineDataString.charAt(0) == 39 & inlineDataString.charAt(inlineDataString.length() - 1) == 39) {
+                                            // Remove the apostrophes around the url
+                                            inlineDataString = inlineDataString.replaceAll("'", "");
+
+                                            // Inside the the pair of apostrophes, it should be wrapped by a pair of curly brackets
+                                            if (inlineDataString.charAt(0) == 123 & inlineDataString.charAt(inlineDataString.length() - 1) == 125) {
+
+                                                boolean hasOneLeftCurlyBracket = false;
+                                                boolean hasOneRightCurlyBracket = false;
+
+                                                // Check if there is only one left and right curly bracket, otherwise it is invalid syntax
+                                                for (int characterIndex = 0; characterIndex < inlineDataString.length() - 1; characterIndex++) {
+                                                    if (inlineDataString.charAt(characterIndex) == 123) {
+                                                        if (!hasOneLeftCurlyBracket)
+                                                            hasOneLeftCurlyBracket = true;
+                                                        else
+                                                            return "Invalid syntax";
+                                                    }
+
+                                                    if (inlineDataString.charAt(characterIndex) == 125) {
+                                                        if (!hasOneRightCurlyBracket)
+                                                            hasOneRightCurlyBracket = true;
+                                                        else
+                                                            return "Invalid syntax";
+                                                    }
+                                                }
+
+                                                if (!verifyURL(commandLineStringArray[commandLineStringArray.length - 1]))
+                                                    return "Invalid syntax";
+
+                                                urlString = currentURL;
+
+                                                // Test the URL to redirect or not
+                                                int redirectionResultCode = detectRedirection(urlString);
+
+                                                if (redirectionResultCode == -1)
+                                                    return "Redirection errors.";
+                                                else if (redirectionResultCode == 0)
+                                                    redirectionResultString = "No redirection detected\n";
+                                                else if (redirectionResultCode == 1)
+                                                    urlString = redirectedURL;
+
+                                                // There could be multiple header parameters
+                                                if (!extractHeaderParameters(commandLineStringArray, 4, commandLineStringArray.length - 3))
+                                                    return "Invalid syntax";
+
+                                                // Provided data
+                                                // header parameter list: headerKeyValuePairHashMap
+                                                // inline data: inlineDataString
+                                                // url: urlString
+
+                                                // For debugging
+                                                for (String keyString : headerKeyValuePairHashMap.keySet())
+                                                    System.out.println("key: " + keyString + " value: " + headerKeyValuePairHashMap.get(keyString));
+
+                                                verbosityString = getHeaderValueByKey(urlString, null) + "\nServer: " + getHeaderValueByKey(urlString, "Server") + "\nDate: " + getHeaderValueByKey(urlString, "Date") + "\nContent-Type: " + getHeaderValueByKey(urlString, "Content-Type") + "\nContent-Length: " + getHeaderValueByKey(urlString, "Content-Length") + "\nConnection: " + getHeaderValueByKey(urlString, "Connection") + "\nAccess-Control-Allow-Origin: " + getHeaderValueByKey(urlString, "Access-Control-Allow-Origin") + "\nAccess-Control-Allow-Credentials: " + getHeaderValueByKey(urlString, "Access-Control-Allow-Credentials") + "\n";
+
+                                                return redirectionResultString + "\n" + verbosityString + "\n" + postHttpResponse(urlString, headerKeyValuePairHashMap, inlineDataString);
+                                            } else {
+                                                return "Invalid syntax";
+                                            }
+                                        } else {
+                                            return "Invalid syntax";
+                                        }
+                                    } else {
+                                        return "Invalid syntax";
+                                    }
+                                } else if (compareStringsWithChar("-f", commandLineStringArray[commandLineStringArray.length - 3])) {
+                                    // httpc post -v -h key:value -f "file name" url
+
+                                    String jsonFileContentString = readJSONFile(commandLineStringArray[commandLineStringArray.length - 2]);
+
+                                    if (jsonFileContentString == "Failed")
+                                        return "Failed to read JSON file.";
+
+                                    if (!verifyURL(commandLineStringArray[commandLineStringArray.length - 1]))
+                                        return "Invalid syntax";
+
+                                    urlString = currentURL;
+
+                                    // Test the URL to redirect or not
+                                    int redirectionResultCode = detectRedirection(urlString);
+
+                                    if (redirectionResultCode == -1)
+                                        return "Redirection errors.";
+                                    else if (redirectionResultCode == 0)
+                                        redirectionResultString = "No redirection detected\n";
+                                    else if (redirectionResultCode == 1)
+                                        urlString = redirectedURL;
+
+                                    // There could be multiple header parameters
+                                    if (!extractHeaderParameters(commandLineStringArray, 4, commandLineStringArray.length - 3))
+                                        return "Invalid syntax";
+
+                                    // Provided data
+                                    // header parameter list: headerKeyValuePairHashMap
+                                    // JSON file data: jsonFileContentString
+                                    // url: urlString
+
+                                    // For debugging
+                                    for (String keyString : headerKeyValuePairHashMap.keySet())
+                                        System.out.println("key: " + keyString + " value: " + headerKeyValuePairHashMap.get(keyString));
+
+                                    verbosityString = getHeaderValueByKey(urlString, null) + "\nServer: " + getHeaderValueByKey(urlString, "Server") + "\nDate: " + getHeaderValueByKey(urlString, "Date") + "\nContent-Type: " + getHeaderValueByKey(urlString, "Content-Type") + "\nContent-Length: " + getHeaderValueByKey(urlString, "Content-Length") + "\nConnection: " + getHeaderValueByKey(urlString, "Connection") + "\nAccess-Control-Allow-Origin: " + getHeaderValueByKey(urlString, "Access-Control-Allow-Origin") + "\nAccess-Control-Allow-Credentials: " + getHeaderValueByKey(urlString, "Access-Control-Allow-Credentials") + "\n";
+
+                                    return redirectionResultString + "\n" + verbosityString + "\n" + postHttpResponse(urlString, headerKeyValuePairHashMap, jsonFileContentString);
+                                } else {
+                                    return "Invalid syntax";
+                                }
+                            } else {
+                                // httpc post -v url
+
+                                // Check if it contains the exact number of terms
+                                if (commandLineStringArray.length != 4)
+                                    return "Invalid syntax";
+
+                                if (!verifyURL(commandLineStringArray[3]))
+                                    return "Invalid syntax";
+
+                                urlString = currentURL;
+
+                                // Test the URL to redirect or not
+                                int redirectionResultCode = detectRedirection(urlString);
+
+                                if (redirectionResultCode == -1)
+                                    return "Redirection errors.";
+                                else if (redirectionResultCode == 0)
+                                    redirectionResultString = "No redirection detected\n";
+                                else if (redirectionResultCode == 1)
+                                    urlString = redirectedURL;
+
+                                // There could be multiple header parameters
+                                if (!extractHeaderParameters(commandLineStringArray, 4, commandLineStringArray.length - 3))
+                                    return "Invalid syntax";
+
+                                // Provided data
+                                // verbose output: hasVerbosityString
+                                // url: urlString
+
+                                verbosityString = getHeaderValueByKey(urlString, null) + "\nServer: " + getHeaderValueByKey(urlString, "Server") + "\nDate: " + getHeaderValueByKey(urlString, "Date") + "\nContent-Type: " + getHeaderValueByKey(urlString, "Content-Type") + "\nContent-Length: " + getHeaderValueByKey(urlString, "Content-Length") + "\nConnection: " + getHeaderValueByKey(urlString, "Connection") + "\nAccess-Control-Allow-Origin: " + getHeaderValueByKey(urlString, "Access-Control-Allow-Origin") + "\nAccess-Control-Allow-Credentials: " + getHeaderValueByKey(urlString, "Access-Control-Allow-Credentials") + "\n";
+
+                                return redirectionResultString + "\n" + verbosityString + "\n" + postHttpResponse(urlString, headerKeyValuePairHashMap, null);
+                            }
+                        } else if (compareStringsWithChar("-h", commandLineStringArray[2])) {
+                            if (commandLineStringArray.length >= 5 & !compareStringsWithChar("-d", commandLineStringArray[commandLineStringArray.length - 3]) & !compareStringsWithChar("-f", commandLineStringArray[commandLineStringArray.length - 3])) {
+                                // httpc post -h key:value url
+                                if (!verifyURL(commandLineStringArray[commandLineStringArray.length - 1]))
+                                    return "Invalid syntax";
+
+                                urlString = currentURL;
+
+                                // Test the URL to redirect or not
+                                int redirectionResultCode = detectRedirection(urlString);
+
+                                if (redirectionResultCode == -1)
+                                    return "Redirection errors.";
+                                else if (redirectionResultCode == 0)
+                                    redirectionResultString = "No redirection detected\n";
+                                else if (redirectionResultCode == 1)
+                                    urlString = redirectedURL;
+
+                                // There could be multiple header parameters
+                                if (!extractHeaderParameters(commandLineStringArray, 3, commandLineStringArray.length - 1))
+                                    return "Invalid syntax";
+
+                                // Provided data
+                                // verbose output: hasVerbosityString
+                                // header parameter list: headerKeyValuePairHashMap
+                                // url: urlString
+
+                                // For debugging
+                                for (String keyString : headerKeyValuePairHashMap.keySet())
+                                    System.out.println("key: " + keyString + " value: " + headerKeyValuePairHashMap.get(keyString));
+
+                                return redirectionResultString + "\n" + postHttpResponse(urlString, headerKeyValuePairHashMap, null);
+                            } else if (compareStringsWithChar("-d", commandLineStringArray[commandLineStringArray.length - 3])) {
+                                // httpc post -h key:value -d "inline data" url
+
+                                // Verify the format of inline data
+
+                                // Remove empty bytes from the string
+                                String inlineDataString = commandLineStringArray[commandLineStringArray.length - 2].replaceAll("\u0000.*", "");
+
+                                // Check if it is empty
+                                if (!compareStringsWithChar("", inlineDataString)) {
+                                    // Check the inline data format, it should be wrapped by a pair of apostrophes
+                                    if (inlineDataString.charAt(0) == 39 & inlineDataString.charAt(inlineDataString.length() - 1) == 39) {
+                                        // Remove the apostrophes around the url
+                                        inlineDataString = inlineDataString.replaceAll("'", "");
+
+                                        // Inside the the pair of apostrophes, it should be wrapped by a pair of curly brackets
+                                        if (inlineDataString.charAt(0) == 123 & inlineDataString.charAt(inlineDataString.length() - 1) == 125) {
+
+                                            boolean hasOneLeftCurlyBracket = false;
+                                            boolean hasOneRightCurlyBracket = false;
+
+                                            // Check if there is only one left and right curly bracket, otherwise it is invalid syntax
+                                            for (int characterIndex = 0; characterIndex < inlineDataString.length() - 1; characterIndex++) {
+                                                if (inlineDataString.charAt(characterIndex) == 123) {
+                                                    if (!hasOneLeftCurlyBracket)
+                                                        hasOneLeftCurlyBracket = true;
+                                                    else
+                                                        return "Invalid syntax";
+                                                }
+
+                                                if (inlineDataString.charAt(characterIndex) == 125) {
+                                                    if (!hasOneRightCurlyBracket)
+                                                        hasOneRightCurlyBracket = true;
+                                                    else
+                                                        return "Invalid syntax";
+                                                }
+                                            }
+
+                                            if (!verifyURL(commandLineStringArray[commandLineStringArray.length - 1]))
+                                                return "Invalid syntax";
+
+                                            urlString = currentURL;
+
+                                            // Test the URL to redirect or not
+                                            int redirectionResultCode = detectRedirection(urlString);
+
+                                            if (redirectionResultCode == -1)
+                                                return "Redirection errors.";
+                                            else if (redirectionResultCode == 0)
+                                                redirectionResultString = "No redirection detected\n";
+                                            else if (redirectionResultCode == 1)
+                                                urlString = redirectedURL;
+
+                                            // There could be multiple header parameters
+                                            if (!extractHeaderParameters(commandLineStringArray, 3, commandLineStringArray.length - 3))
+                                                return "Invalid syntax";
+
+                                            // Provided data
+                                            // verbose output: hasVerbosityString
+                                            // header parameter list: headerKeyValuePairHashMap
+                                            // inline data: inlineDataString
+                                            // url: urlString
+
+                                            // For debugging
+                                            for (String keyString : headerKeyValuePairHashMap.keySet())
+                                                System.out.println("key: " + keyString + " value: " + headerKeyValuePairHashMap.get(keyString));
+
+                                            return redirectionResultString + "\n" + postHttpResponse(urlString, headerKeyValuePairHashMap, inlineDataString);
+                                        } else {
+                                            return "Invalid syntax";
+                                        }
+                                    } else {
+                                        return "Invalid syntax";
+                                    }
+                                } else {
+                                    return "Invalid syntax";
+                                }
+                            } else if (compareStringsWithChar("-f", commandLineStringArray[commandLineStringArray.length - 3])) {
+                                // httpc post -h key:value -f "file name" url
+
+                                String jsonFileContentString = readJSONFile(commandLineStringArray[commandLineStringArray.length - 2]);
+
+                                if (jsonFileContentString == "Failed")
+                                    return "Failed to read JSON file.";
+
+                                if (!verifyURL(commandLineStringArray[commandLineStringArray.length - 1]))
+                                    return "Invalid syntax";
+
+                                urlString = currentURL;
+
+                                // Test the URL to redirect or not
+                                int redirectionResultCode = detectRedirection(urlString);
+
+                                if (redirectionResultCode == -1)
+                                    return "Redirection errors.";
+                                else if (redirectionResultCode == 0)
+                                    redirectionResultString = "No redirection detected\n";
+                                else if (redirectionResultCode == 1)
+                                    urlString = redirectedURL;
+
+                                // There could be multiple header parameters
+                                if (!extractHeaderParameters(commandLineStringArray, 3, commandLineStringArray.length - 3))
+                                    return "Invalid syntax";
+
+                                // Provided data
+                                // verbose output: hasVerbosityString
+                                // header parameter list: headerKeyValuePairHashMap
+                                // JSON file data: jsonFileContentString
+                                // url: urlString
+
+                                // For debugging
+                                for (String keyString : headerKeyValuePairHashMap.keySet())
+                                    System.out.println("key: " + keyString + " value: " + headerKeyValuePairHashMap.get(keyString));
+
+                                return redirectionResultString + "\n" + postHttpResponse(urlString, headerKeyValuePairHashMap, jsonFileContentString);
+                            } else {
+                                return "Invalid syntax";
+                            }
+                        } else {
+                            // httpc post url
+
+                            // Check if it contains the exact number of terms
+                            if (commandLineStringArray.length != 3)
+                                return "Invalid syntax";
+                            //to check and accept JSON format
+                            if (!verifyURL(commandLineStringArray[2]))
+                                return "Invalid syntax";
+
+                            urlString = currentURL;
+
+                            // Test the URL to redirect or not
+                            int redirectionResultCode = detectRedirection(urlString);
+
+                            if (redirectionResultCode == -1)
+                                return "Redirection errors.";
+                            else if (redirectionResultCode == 0)
+                                redirectionResultString = "No redirection detected\n";
+                            else if (redirectionResultCode == 1)
+                                urlString = redirectedURL;
+
+                            // Provided data
+                            // url: urlString
+
+                            return redirectionResultString + "\n" + postHttpResponse(urlString, headerKeyValuePairHashMap, null);
+                        }
+                    } else if (compareStringsWithChar("-v", commandLineStringArray[1])) {
+                        // httpc -v url -o file.txt
+
+                        // Check if it contains the exact number of terms
+                        if (commandLineStringArray.length != 5)
+                            return "Invalid syntax";
+
+                        if (!verifyURL(commandLineStringArray[2]))
+                            return "Invalid syntax";
+
+                        urlString = currentURL;
+
+                        // Test the URL to redirect or not
+                        int redirectionResultCode = detectRedirection(urlString);
+
+                        if (redirectionResultCode == -1)
+                            return "Redirection errors.";
+                        else if (redirectionResultCode == 0)
+                            redirectionResultString = "No redirection detected\n";
+                        else if (redirectionResultCode == 1)
+                            urlString = redirectedURL;
+
+                        // The fourth term should be -o without any exception
+                        if (!compareStringsWithChar("-o", commandLineStringArray[3]))
+                            return "Invalid syntax";
+
+                        // Remove empty bytes from the file name string
+                        String fileName = commandLineStringArray[4].replaceAll("\u0000.*", "");
+
+                        // Write to file
+                        boolean result = writeToTextFile(fileName, getHttpResponse(urlString));
+
+                        if (result)
+                            return redirectionResultString + "Successfully wrote response to the file.";
+                        else
+                            return redirectionResultString + "Failed to write the file.";
+                    }
+                }
+            }
+
+            return "Invalid syntax";
+        } else {
+            return "Invalid syntax";
+        }
+    }
+
+
+    public String parseHttpfsClientCommandLine(String commandLineString) {
+        commandLineString = preprocessCommandLine(commandLineString);
+
+        String[] commandLineStringArray = commandLineString.split(" ");
+
+        // Remove extra empty characters
+        for (int index = 0; index < commandLineStringArray.length; index++)
+            commandLineStringArray[index] = commandLineStringArray[index].replaceAll("\u0000.*", "");
+
+        if (commandLineStringArray.length > 0) {
+            // Check the starting word, must start with httpfs
+
+            if (commandLineStringArray[0].compareTo("httpfs") != 0) {
+                return "99: Invalid syntax";
+            } else {
+                if (commandLineStringArray.length >= 2) {
+                    if (commandLineStringArray.length == 3) {
+                        if (compareStringsWithChar("get", commandLineStringArray[1])) {
+                            if (verifyRequestURL(commandLineStringArray[2]) == 0) {
+                                String localhostString = "http://localhost:" + port + "/";
+
+                                if (commandLineStringArray[2].length() >= localhostString.length()) {
+                                    String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]);
+
+                                    boolean isAFile = false;
+
+                                    // Check if it contains a dot, if so, it is considered as a file, if not, it is a directory
+                                    for (int index = filePath.length() - 1; index >= 0; index--) {
+                                        if (filePath.charAt(index) == '.') {
+                                            isAFile = true;
+                                            break;
+                                        }
+
+                                        if (filePath.charAt(index) == '/' | filePath.charAt(index) == 92)
+                                            break;
+                                    }
+
+                                    if (!isAFile) {
+                                        // GET /
+                                        if (checkSecureAccess(filePath) != 0)
+                                            return "5: Access restricted";
+
+                                        int statusCode = fileSystem.listAllFiles(filePath);
+
+                                        if (statusCode == 0)
+                                            return fileSystem.fileContentString;
+                                        else if (statusCode == 11)
+                                            return statusCode + ": Directory doesn't exist";
+                                    } else {
+                                        // GET /foo
+                                        if (checkSecureAccess(filePath) != 0)
+                                            return "5: Access restricted";
+
+                                        if (fileSystem.directoryExists(filePath)) {
+                                            int statusCode = fileSystem.readFile(filePath);
+
+                                            if (statusCode == 0)
+                                                return fileSystem.fileContentString;
+                                            else if (statusCode == 10)
+                                                return statusCode + ": It's a directory, not a regular file";
+                                            else if (statusCode == 12)
+                                                return statusCode + ": File doesn't exist";
+                                        } else {
+                                            return "12: File doesn't exist";
+                                        }
+                                    }
+                                }
+                            } else {
+                                return "3: Incorrect request URL";
+                            }
+                        }
+                    } else if (commandLineStringArray.length == 4) {
+                        if (verifyRequestURL(commandLineStringArray[2]) == 0) {
+                            String[] fourthTermStringArray = commandLineStringArray[3].split(":");
+
+                            if (compareStringsWithChar("Content-Type", fourthTermStringArray[0])) {
+                                // GET /foo Content-Type:type/subtype
+
+                                // Check if it contains only one slash
+                                int numberOfSlashes = 0;
+                                for (int index = 0; index < fourthTermStringArray[1].length(); index++) {
+                                    if (fourthTermStringArray[1].charAt(index) == '/') {
+                                        if (numberOfSlashes == 0)
+                                            numberOfSlashes += 1;
+                                        else if (numberOfSlashes >= 1)
+                                            return "99: Invalid syntax";
+                                    }
+                                }
+
+                                String[] typeStringArray = fourthTermStringArray[1].split("/");
+
+                                String typeString = typeStringArray[0];
+                                String subtypeString = typeStringArray[1];
+
+                                String formatString = "";
+
+                                if (compareStringsWithChar("text", typeString)) {
+                                    if (compareStringsWithChar("plain", subtypeString))
+                                        formatString = ".txt";
+                                    else
+                                        formatString = "." + subtypeString;
+                                } else {
+                                    formatString = "." + subtypeString;
+                                }
+
+                                String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]) + formatString;
+
+                                if (checkSecureAccess(filePath) != 0)
+                                    return "5: Access restricted";
+
+                                if (fileSystem.directoryExists(filePath)) {
+                                    int statusCode = fileSystem.readFile(filePath);
+
+                                    if (statusCode == 0) {
+                                        return fileSystem.fileContentString;
+                                    } else if (statusCode == 10) {
+                                        return statusCode + ": It's a directory, not a regular file";
+                                    } else if (statusCode == 12) {
+                                        return statusCode + ": File doesn't exist";
+                                    }
+                                } else {
+                                    return "12: File doesn't exist";
+                                }
+                            } else if (compareStringsWithChar("Content-Disposition", fourthTermStringArray[0])) {
+                                // GET /foo Content-Disposition:inline/attachment
+
+                                String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]);
+
+                                if (compareStringsWithChar("inline", fourthTermStringArray[1])) {
+                                    if (checkSecureAccess(filePath) != 0)
+                                        return "5: Access restricted";
+
+                                    if (fileSystem.directoryExists(filePath)) {
+                                        int statusCode = fileSystem.readFile(filePath);
+
+                                        if (statusCode == 0) {
+                                            return fileSystem.fileContentString;
+                                        } else if (statusCode == 10) {
+                                            return statusCode + ": It's a directory, not a regular file";
+                                        } else if (statusCode == 12) {
+                                            return statusCode + ": File doesn't exist";
+                                        }
+                                    } else {
+                                        return "12: File doesn't exist";
+                                    }
+                                } else if (compareStringsWithChar("attachment", fourthTermStringArray[1])) {
+                                    if (checkSecureAccess(filePath) != 0)
+                                        return "5: Access restricted";
+
+                                    String fileName = "";
+
+                                    // Extract the file name
+                                    for (int index = filePath.length() - 1; index >= 0; index--) {
+                                        if (filePath.charAt(index) == '/' | filePath.charAt(index) == 92) {
+                                            fileName = filePath.substring(index + 1, filePath.length());
+
+                                            // Exclude the file name in the path
+                                            filePath = filePath.substring(0, index + 1);
+                                            break;
+                                        }
+                                    }
+
+                                    String fileFormat = "";
+
+                                    // Extract the file format
+                                    for (int index = 0; index < fileName.length(); index++) {
+                                        if (fileName.charAt(index) == '.') {
+                                            fileFormat = fileName.substring(index, fileName.length());
+
+                                            // Exclude the file format in the file name
+                                            fileName = fileName.substring(0, index);
+                                            break;
+                                        }
+                                    }
+
+                                    if (fileSystem.directoryExists(filePath)) {
+                                        int statusCode = fileSystem.copyFile(filePath, FileSystem.rootDirectoryAbsolutePath + "/download", fileName, fileFormat);
+
+                                        if (statusCode == 0)
+                                            return statusCode + ": File downloaded successfully";
+                                        else if (statusCode == 8)
+                                            return statusCode + ": Failed to copy file";
+                                        else if (statusCode == 12)
+                                            return statusCode + ": File doesn't exist";
+                                        else if (statusCode == 13)
+                                            return statusCode + ": Failed to copy file: Target file already exists";
+                                        else
+                                            return "99: Invalid syntax";
+                                    } else {
+                                        return "12: File doesn't exist";
+                                    }
+                                } else {
+                                    return "15: Invalid Content-Disposition";
+                                }
+                            }
+                        } else {
+                            return "3: Incorrect request URL";
+                        }
+                    } else if (commandLineStringArray.length == 5) {
+                        if (compareStringsWithChar("get", commandLineStringArray[1])) {
+                            if (verifyRequestURL(commandLineStringArray[2]) == 0) {
+                                String[] fourthTermStringArray = commandLineStringArray[3].split(":");
+                                String[] fifthTermStringArray = commandLineStringArray[4].split(":");
+
+                                if (compareStringsWithChar("Content-Type", fourthTermStringArray[0])) {
+                                    if (compareStringsWithChar("Content-Disposition", fifthTermStringArray[0])) {
+                                        // GET /foo Content-Type:type/subtype Content-Disposition
+
+                                        String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]);
+
+                                        String[] typeStringArray = fourthTermStringArray[1].split("/");
+
+                                        String typeString = typeStringArray[0];
+                                        String subtypeString = typeStringArray[1];
+
+
+                                        String fileName = "";
+
+                                        // Extract the file name
+                                        for (int index = filePath.length() - 1; index >= 0; index--) {
+                                            if (filePath.charAt(index) == '/' | filePath.charAt(index) == 92) {
+                                                fileName = filePath.substring(index + 1, filePath.length());
+
+                                                // Exclude the file name in the path
+                                                filePath = filePath.substring(0, index + 1);
+                                                break;
+                                            }
+                                        }
+
+                                        String formatString = "";
+
+                                        if (compareStringsWithChar("text", typeString)) {
+                                            if (compareStringsWithChar("plain", subtypeString))
+                                                formatString = ".txt";
+                                            else
+                                                formatString = "." + subtypeString;
+                                        } else {
+                                            formatString = "." + subtypeString;
+                                        }
+
+                                        if (checkSecureAccess(filePath) != 0)
+                                            return "5: Access restricted";
+
+                                        int statusCode = 0;
+
+                                        if (fileSystem.directoryExists(filePath)) {
+                                            if (compareStringsWithChar("inline", fifthTermStringArray[1])) {
+                                                statusCode = fileSystem.readFile(filePath + fileName + formatString);
+
+                                                if (statusCode == 0)
+                                                    return fileSystem.fileContentString;
+                                                else if (statusCode == 12)
+                                                    return statusCode + ": File doesn't exist";
+                                            } else if (compareStringsWithChar("attachment", fifthTermStringArray[1])) {
+                                                statusCode = fileSystem.copyFile(filePath, FileSystem.rootDirectoryAbsolutePath + "/download", fileName, formatString);
+
+                                                if (statusCode == 0)
+                                                    return "0: File downloaded successfully";
+                                                else if (statusCode == 8)
+                                                    return statusCode + ": Failed to copy file";
+                                                else if (statusCode == 12)
+                                                    return statusCode + ": File doesn't exist";
+                                                else if (statusCode == 13)
+                                                    return statusCode + ": Failed to copy file: Target file already exists";
+                                                else
+                                                    return "99: Invalid syntax";
+                                            } else {
+                                                return "15: Invalid Content-Disposition";
+                                            }
+                                        }
+                                    } else {
+                                        return "15: Invalid Content-Disposition";
+                                    }
+                                } else {
+                                    return "14: Invalid Content-Type";
+                                }
+                            } else {
+                                return "3: Incorrect request URL";
+                            }
+                        }
+                    } else if (commandLineStringArray.length == 6) {
+                        if (compareStringsWithChar("post", commandLineStringArray[1])) {
+                            if (compareStringsWithChar("-d", commandLineStringArray[3])) {
+                                if (verifyRequestURL(commandLineStringArray[2]) == 0) {
+                                    String localhostString = "http://localhost:" + port + "/";
+
+                                    if (commandLineStringArray[2].length() > localhostString.length()) {
+                                        // POST /bar -d inline-data
+                                        String filePath = extractFilePathFromRequestURL(commandLineStringArray[2]);
+
+                                        if (checkSecureAccess(filePath) != 0)
+                                            return "5: Access restricted";
+
+                                        String fileName = "";
+
+                                        // Extract the file name
+                                        for (int index = filePath.length() - 1; index >= 0; index--) {
+                                            if (filePath.charAt(index) == '/' | filePath.charAt(index) == 92) {
+                                                fileName = filePath.substring(index + 1, filePath.length());
+
+                                                // Exclude the file name in the path
+                                                filePath = filePath.substring(0, index + 1);
+                                                break;
+                                            }
+                                        }
+
+                                        String fileFormat = "";
+
+                                        // Extract the file format
+                                        for (int index = 0; index < fileName.length(); index++) {
+                                            if (fileName.charAt(index) == '.') {
+                                                fileFormat = fileName.substring(index, fileName.length());
+
+                                                // Exclude the file format in the file name
+                                                fileName = fileName.substring(0, index);
+                                                break;
+                                            }
+                                        }
+
+                                        // Extract the overwrite parameter
+                                        String[] overwriteStringArray = commandLineStringArray[5].split("=");
+
+                                        boolean overwrite = false;
+
+                                        if (overwriteStringArray.length != 2)
+                                            return "99: Invalid syntax";
+
+                                        if (compareStringsWithChar("true", overwriteStringArray[1]))
+                                            overwrite = true;
+                                        else if (compareStringsWithChar("false", overwriteStringArray[1]))
+                                            overwrite = false;
+                                        else
+                                            return "99: Invalid syntax";
+
+                                        // Remove apostrophes
+                                        if ((commandLineStringArray[4].charAt(0) == 39 & commandLineStringArray[4].charAt(commandLineStringArray[4].length() - 1) == 39) | (commandLineStringArray[4].charAt(0) == 8216 & commandLineStringArray[4].charAt(commandLineStringArray[4].length() - 1) == 8217))
+                                            commandLineStringArray[4] = commandLineStringArray[4].substring(1, commandLineStringArray[4].length() - 1);
+                                        else
+                                            return "99: Invalid syntax";
+
+                                        if (fileSystem.directoryExists(filePath)) {
+                                            int statusCode = fileSystem.writeFile(filePath, fileName, fileFormat, commandLineStringArray[4], overwrite);
+
+                                            if (statusCode == 0) {
+                                                return statusCode + ": File written successfully";
+                                            } else if (statusCode == 7) {
+                                                return statusCode + ": Failed to write file";
+                                            } else if (statusCode == 11) {
+                                                return statusCode + "Directory doesn't exist";
+                                            }
+                                        } else {
+                                            return "11: Directory doesn't exist";
+                                        }
+                                    } else {
+                                        return "3: Incorrect request URL";
+                                    }
+                                } else {
+                                    return "3: Incorrect request URL";
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return "99: Invalid syntax";
+    }
+
+    public String parseServerCommandLine(String commandLineString) {
+        commandLineString = preprocessCommandLine(commandLineString);
+
+        String[] commandLineStringArray = commandLineString.split(" ");
+
+        // Remove extra empty characters
+        for (int index = 0; index < commandLineStringArray.length; index++)
+            commandLineStringArray[index] = commandLineStringArray[index].replaceAll("\u0000.*", "");
+
+        if (commandLineStringArray.length > 0) {
+            // Check the starting word, must start with httpfs
+
+            if (commandLineStringArray[0].compareTo("httpfs") != 0) {
+                return "99: Invalid syntax";
+            } else {
+                String debuggingMessages = "";
+
+                if (commandLineStringArray.length == 1 & compareStringsWithChar("httpfs", commandLineStringArray[0])) {
+                    if (!serverStarted) {
+                        serverThread.confirmedToRunServer = true;
+
+                        return "1: Server is running";
+                    } else {
+                        return "2: Server is running already";
+                    }
+                } else if (commandLineStringArray.length == 2) {
+                    if (compareStringsWithChar("-v", commandLineStringArray[1])) {
+                        // httpfs -v
+                        if (!serverStarted) {
+                            serverThread.confirmedToRunServer = true;
+
+                            debuggingMessages = getDebuggingMessages();
+
+                            return "1: Server is running\n\n" + debuggingMessages;
+                        } else {
+                            debuggingMessages = getDebuggingMessages();
+
+                            return "2: Server is running already\n\n" + debuggingMessages;
+                        }
+                    }
+                } else if (commandLineStringArray.length == 3) {
+                    if (compareStringsWithChar("-p", commandLineStringArray[1])) {
+                        // httpfs -p PORT
+                        int statusCode = setPortNumber(Integer.parseInt(commandLineStringArray[2]));
+
+                        String changingPortResponseString = "";
+
+                        if (statusCode == 0)
+                            changingPortResponseString = "0: Port number changed";
+                        else
+                            changingPortResponseString = "4: Not allowed to change port number after server establishment";
+
+                        if (!serverStarted) {
+                            serverThread.confirmedToRunServer = true;
+
+                            return "1: Server is running\n\n" + changingPortResponseString;
+                        } else {
+                            return "2: Server is running already\n\n" + changingPortResponseString;
+                        }
+                    } else if (compareStringsWithChar("-d", commandLineStringArray[1])) {
+                        // httpfs -d PATH-TO-DIR
+                        int statusCode = setWorkingDirectory(commandLineStringArray[2]);
+
+                        String changingWorkingDirectoryResponseString = "";
+
+                        if (statusCode == 0)
+                            changingWorkingDirectoryResponseString = "0: Working directory changed";
+                        else
+                            changingWorkingDirectoryResponseString = "11: Working directory doesn't exist";
+
+                        if (!serverStarted) {
+                            serverThread.confirmedToRunServer = true;
+
+                            return "1: Server is running\n\n" + changingWorkingDirectoryResponseString;
+                        } else {
+                            return "2: Server is running already\n\n" + changingWorkingDirectoryResponseString;
+                        }
+                    }
+                } else if (commandLineStringArray.length == 4) {
+                    if (compareStringsWithChar("-v", commandLineStringArray[1])) {
+                        if (compareStringsWithChar("-p", commandLineStringArray[2])) {
+                            // httpfs -v -p PORT
+                            int statusCode = setPortNumber(Integer.parseInt(commandLineStringArray[3]));
+
+                            String changingPortResponseString = "";
+
+                            if (statusCode == 0)
+                                changingPortResponseString = "0: Port number changed";
+                            else
+                                changingPortResponseString = "4: Not allowed to change port number after server establishment";
+
+                            debuggingMessages = getDebuggingMessages();
+
+                            if (!serverStarted) {
+                                serverThread.confirmedToRunServer = true;
+
+                                return "1: Server is running\n\n" + debuggingMessages + "\n\n" + changingPortResponseString;
+                            } else {
+                                return "2: Server is running already\n\n" + debuggingMessages + "\n\n" + changingPortResponseString;
+                            }
+                        } else if (compareStringsWithChar("-p", commandLineStringArray[2])) {
+                            // httpfs -v -d PATH-TO-DIR
+                            int statusCode = setWorkingDirectory(commandLineStringArray[3]);
+
+                            String changingWorkingDirectoryResponseString = "";
+
+                            if (statusCode == 0)
+                                changingWorkingDirectoryResponseString = "0: Working directory changed";
+                            else
+                                changingWorkingDirectoryResponseString = "11: Working directory doesn't exist";
+
+                            debuggingMessages = getDebuggingMessages();
+
+                            if (!serverStarted) {
+                                serverThread.confirmedToRunServer = true;
+
+                                return "1: Server is running\n\n" + debuggingMessages + "\n\n" + changingWorkingDirectoryResponseString;
+                            } else {
+                                return "2: Server is running already\n\n" + debuggingMessages + "\n\n" + changingWorkingDirectoryResponseString;
+                            }
+                        }
+                    }
+                } else if (commandLineStringArray.length == 5) {
+                    if (compareStringsWithChar("-p", commandLineStringArray[1])) {
+                        if (compareStringsWithChar("-d", commandLineStringArray[3])) {
+                            // httpfs -p PORT -d PATH-TO-DIR
+
+                            int statusCode = setPortNumber(Integer.parseInt(commandLineStringArray[2]));
+
+                            String changingPortResponseString = "";
+
+                            if (statusCode == 0)
+                                changingPortResponseString = "0: Port number changed";
+                            else
+                                changingPortResponseString = "4: Not allowed to change port number after server establishment";
+
+
+                            statusCode = setWorkingDirectory(commandLineStringArray[5]);
+
+                            String changingWorkingDirectoryResponseString = "";
+
+                            if (statusCode == 0)
+                                changingWorkingDirectoryResponseString = "0: Working directory changed";
+                            else
+                                changingWorkingDirectoryResponseString = "11: Working directory doesn't exist";
+
+                            if (!serverStarted) {
+                                serverThread.confirmedToRunServer = true;
+
+                                return "1: Server is running\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
+                            } else {
+                                return "2: Server is running already\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
+                            }
+                        }
+                    }
+                } else if (commandLineStringArray.length == 6) {
+                    if (compareStringsWithChar("-v", commandLineStringArray[1])) {
+                        if (compareStringsWithChar("-p", commandLineStringArray[2])) {
+                            if (compareStringsWithChar("-d", commandLineStringArray[4])) {
+                                // httpfs -v -p PORT -d PATH-TO-DIR
+
+                                int statusCode = setPortNumber(Integer.parseInt(commandLineStringArray[3]));
+
+                                String changingPortResponseString = "";
+
+                                if (statusCode == 0)
+                                    changingPortResponseString = "0: Port number changed";
+                                else
+                                    changingPortResponseString = "4: Not allowed to change port number after server establishment";
+
+
+                                statusCode = setWorkingDirectory(commandLineStringArray[5]);
+
+                                String changingWorkingDirectoryResponseString = "";
+
+                                if (statusCode == 0)
+                                    changingWorkingDirectoryResponseString = "0: Working directory changed";
+                                else
+                                    changingWorkingDirectoryResponseString = "11: Working directory doesn't exist";
+
+                                debuggingMessages = getDebuggingMessages();
+
+                                if (!serverStarted) {
+                                    serverThread.confirmedToRunServer = true;
+
+                                    return "1: Server is running\n\n" + debuggingMessages + "\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
+                                } else {
+                                    return "2: Server is running already\n\n" + debuggingMessages + "\n\n" + changingPortResponseString + "\n\n" + changingWorkingDirectoryResponseString;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return "99: Invalid syntax";
+    }
+
+    private String preprocessCommandLine(String commandLineString) {
+        boolean repeat = true;
+
+        while (repeat) {
+            repeat = false;
+
+            // Remove extra empty characters in the string
+            for (int characterIndex = 0; characterIndex < commandLineString.length() - 1; characterIndex++) {
+                if (commandLineString.charAt(characterIndex) == ':' | commandLineString.charAt(characterIndex) == ',') {
+                    if (commandLineString.charAt(characterIndex + 1) == ' ') {
+                        commandLineString = commandLineString.substring(0, characterIndex + 1) + commandLineString.substring(characterIndex + 2, commandLineString.length());
+                        repeat = true;
+
+                        break;
+                    }
+                }
+            }
+        }
+
+        return commandLineString;
+    }
+
+    private int detectRedirection(String urlString) {
+        // Result code
+        // -1: Redirection failed
+        // 0: No redirection detected
+        // 1: Redirection succeeded
+
+        // Initialize attributes
+        boolean continueRedirection = true;
+        boolean redirectionDetected = false;
+        int maximumRedirectionTimes = 5;
+        int currentRedirectionTimes = 0;
+
+        redirectionResultString = "";
+
+        redirectedURL = urlString;
+
+        // Redirection loop
+        while (continueRedirection & currentRedirectionTimes < maximumRedirectionTimes) {
+            continueRedirection = false;
+
+            try {
+                HttpURLConnection connection = (HttpURLConnection) new URL(redirectedURL).openConnection();
+                connection.setReadTimeout(5000);
+
+                boolean redirected = false;
+
+                int status = connection.getResponseCode();
+
+                // Response code starts with 3 is redirection
+                if (status != HttpURLConnection.HTTP_OK) {
+                    if (status == HttpURLConnection.HTTP_MOVED_TEMP || status == HttpURLConnection.HTTP_MOVED_PERM || status == HttpURLConnection.HTTP_SEE_OTHER) {
+                        redirected = true;
+                        redirectionDetected = true;
+                        continueRedirection = true;
+
+                        redirectionResultString += "Response code: " + status + "\n";
+
+                        currentRedirectionTimes += 1;
+                    }
+                }
+
+                if (redirected) {
+                    // Get redirected url from "location" header field
+                    redirectedURL = connection.getHeaderField("Location");
+
+                    // Open the new connection again
+                    connection = (HttpURLConnection) new URL(redirectedURL).openConnection();
+
+                    redirectionResultString += "Redirect to URL: " + redirectedURL + "\n";
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+
+                return -1;
+            }
+        }
+
+        if (redirectionDetected)
+            redirectionResultString += "Total redirection times: " + currentRedirectionTimes + "\n";
+
+        if (!redirectionDetected)
+            return 0;
+        else
+            return 1;
+    }
+
+    private boolean extractHeaderParameters(String[] commandLineStringArray, int startingIndex, int endingIndex) {
+        headerKeyValuePairHashMap = new HashMap<String, String>();
+
+        for (int index = startingIndex; index < endingIndex; index++) {
+            boolean hasOneColon = false;
+
+            // Check if there is exactly one colon in each pair, otherwise it is invalid syntax
+            for (int characterIndex = 0; characterIndex < commandLineStringArray[index].length() - 1; characterIndex++) {
+                if (commandLineStringArray[index].charAt(characterIndex) == ':') {
+                    if (!hasOneColon)
+                        hasOneColon = true;
+                    else
+                        return false;
+                }
+            }
+
+            // It is invalid if it doesn't contain a colon
+            if (!hasOneColon)
+                return false;
+
+            String[] keyValueString = commandLineStringArray[index].split(":");
+
+            headerKeyValuePairHashMap.put(keyValueString[0], keyValueString[1]);
+        }
+
+        return true;
+    }
+
+    private boolean verifyURL(String urlString) {
+        // Remove empty bytes from the string
+        urlString = urlString.replaceAll("\u0000.*", "");
+
+        // Check it is an empty url
+        if (!compareStringsWithChar("", urlString)) {
+            // Check the url format, it should be wrapped by a pair of apostrophes
+            if (urlString.charAt(0) == 39 & urlString.charAt(urlString.length() - 1) == 39) {
+                // Remove the apostrophes around the url
+                currentURL = urlString.replaceAll("'", "");
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private String getHttpResponse(String urlString) {
+        StringBuilder stringBuilder;
+
+        try {
+            stringBuilder = new StringBuilder();
+            URL url = new URL(urlString);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setRequestMethod("GET");
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            String line;
+
+            while ((line = bufferedReader.readLine()) != null)
+                stringBuilder.append(line + "\n");
+
+            bufferedReader.close();
+        } catch (Exception e) {
+            return "Get Http response error";
+        }
+
+        return stringBuilder.toString();
+    }
+
+    private String getHeaderValueByKey(String urlString, String keyString) {
+        try {
+            URL url = new URL(urlString);
+            URLConnection connection = url.openConnection();
+
+            String headerValueString = connection.getHeaderField(keyString);
+
+            if (headerValueString == null)
+                System.out.println("Key '" + keyString + "' not found");
+            else
+                return headerValueString;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return "Not found";
+    }
+
+    private String readJSONFile(String jsonFileName) {
+        JSONParser parser = new JSONParser();
+
+        JSONObject jsonObject = null;
+
+        try {
+            Object obj = parser.parse(new FileReader(jsonFileName));
+            jsonObject = (JSONObject) obj;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return "Failed";
+        }
+
+        return jsonObject.toString();
+    }
+
+    private boolean writeToTextFile(String fileNameString, String contentString) {
+        try {
+            FileWriter myWriter = new FileWriter(fileNameString);
+            myWriter.write(contentString);
+            myWriter.close();
+            System.out.println("Successfully wrote response to the file.");
+        } catch (IOException e) {
+            System.out.println("Failed to write the file.");
+            e.printStackTrace();
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private boolean compareStringsWithChar(String string1, String string2) {
+        // Remove empty bytes from the string
+        string1 = string1.replaceAll("\u0000.*", "");
+        string2 = string2.replaceAll("\u0000.*", "");
+
+        if (string1.length() != string2.length())
+            return false;
+
+        for (int index = 0; index < string1.length(); index++)
+            if (Character.compare(string1.charAt(index), string2.charAt(index)) != 0)
+                return false;
+
+        return true;
+    }
+
+    private String postHttpResponse(String urlString, HashMap<String, String> headerKeyValuePairHashMap, String jsonData) {
+        StringBuilder stringBuilder;
+
+        try {
+            stringBuilder = new StringBuilder();
+            URL url = new URL(urlString);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+            connection.setDoOutput(true);
+            connection.setRequestMethod("POST");
+
+            // Set all the header parameters
+            if (headerKeyValuePairHashMap != null)
+                for (String keyString : headerKeyValuePairHashMap.keySet())
+                    connection.setRequestProperty(keyString, headerKeyValuePairHashMap.get(keyString));
+
+            // The Content-Type is fixed
+            connection.setRequestProperty("Content-Type", "application/json");
+
+            if (jsonData != null) {
+                try (DataOutputStream wr = new DataOutputStream(connection.getOutputStream())) {
+                    byte[] input = jsonData.getBytes("utf-8");
+                    wr.write(input, 0, input.length);
+                }
+            }
+
+            BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(connection.getInputStream()));
+            String line;
+
+            while ((line = bufferedReader.readLine()) != null) {
+                stringBuilder.append(line);
+                stringBuilder.append(System.lineSeparator());
+            }
+
+            bufferedReader.close();
+        } catch (Exception e) {
+            System.out.println(e);
+            return "Post Http response error";
+        }
+
+        return stringBuilder.toString();
+    }
+
+    private int verifyRequestURL(String urlString) {
+        String localhostString = "http://localhost:" + port + "/";
+
+        if (urlString.length() < localhostString.length())
+            return 2;
+
+        if (compareStringsWithChar(localhostString, urlString.substring(0, localhostString.length())))
+            return 0;
+        else
+            return 2;
+    }
+
+    private String extractFilePathFromRequestURL(String urlString) {
+        String localhostString = "http://localhost:" + port + "/";
+
+        return urlString.substring(localhostString.length(), urlString.length());
+    }
+
+    private String getDebuggingMessages() {
+        return "Current port: " + port + "\n" + "Current directory: " + workingDirectoryPath;
+    }
+
+    private int setWorkingDirectory(String path) {
+        if (fileSystem.directoryExists(path)) {
+            workingDirectoryPath = path;
+            return 0;
+        } else {
+            return 9;
+        }
+    }
+
+    private int setPortNumber(int portNumber) {
+        if (!serverStarted) {
+            port = portNumber;
+
+            return 0;
+        } else {
+            return 2;
+        }
+    }
+
+    private int checkSecureAccess(String path) {
+        for (int index = 0; index < workingDirectoryPath.length(); index++)
+            if (Character.compare(path.charAt(index), workingDirectoryPath.charAt(index)) != 0)
+                return 4;
+
+        return 0;
+    }
+
+    public void runServer() throws IOException {
+        serverStarted = true;
+        System.out.println("Server is running");
+
+        UDPServer server = new UDPServer();
+        server.listenAndServe(port);
+    }
 
     public static void main(String[] args) throws IOException {
         OptionParser parser = new OptionParser();
         parser.acceptsAll(asList("port", "p"), "Listening port")
                 .withOptionalArg()
-                .defaultsTo("8007");
+                .defaultsTo(serverPort + "");
 
         OptionSet opts = parser.parse(args);
         int port = Integer.parseInt((String) opts.valueOf("port"));
-        UDPServer server = new UDPServer();
-        server.listenAndServe(port);
+
+        serverThread.start();
     }
 }
